@@ -1,3 +1,3 @@
 (fp_lib_table
-  (lib (name "minputer")(type "KiCad")(uri "C:/Users/rclem/OneDrive/Documents/KiCad/Minputer/minputer")(options "")(descr ""))
+  (lib (name "zediac")(type "KiCad")(uri "C:/Users/rclem/OneDrive/Documents/KiCad/Zediac/zediac")(options "")(descr ""))
 )
