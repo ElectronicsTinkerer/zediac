@@ -1,0 +1,3 @@
+(sym_lib_table
+  (lib (name "zediac-logo")(type "KiCad")(uri "${KIPRJMOD}/zediac-logo.kicad_sym")(options "")(descr ""))
+)
