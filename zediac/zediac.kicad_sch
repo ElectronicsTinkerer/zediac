@@ -15048,7 +15048,7 @@
     (property "Value" "LOGO" (id 1) (at 496.57 365.7086 0)
       (effects (font (size 1.27 1.27)) hide)
     )
-    (property "Footprint" "" (id 2) (at 496.57 363.855 0)
+    (property "Footprint" "zediac:zediac-logo" (id 2) (at 496.57 363.855 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Datasheet" "" (id 3) (at 496.57 363.855 0)
@@ -16589,7 +16589,7 @@
       (reference "D58") (unit 1) (value "D_TVS") (footprint "Diode_SMD:D_0603_1608Metric_Pad1.05x0.95mm_HandSolder")
     )
     (path "/c6ab306e-e6a9-4bf2-b543-654c4f8e78f7"
-      (reference "G1") (unit 1) (value "LOGO") (footprint "")
+      (reference "G1") (unit 1) (value "LOGO") (footprint "zediac:zediac-logo")
     )
     (path "/cea4748c-6d2d-4633-98b5-6fee26e30e0f"
       (reference "H1") (unit 1) (value "MountingHole_Pad") (footprint "MountingHole:MountingHole_3.2mm_M3_Pad")
