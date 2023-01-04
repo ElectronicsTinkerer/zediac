@@ -104,7 +104,7 @@
         "allow_microvias": false,
         "max_error": 0.005,
         "min_clearance": 0.2032,
-        "min_copper_edge_clearance": 2.032,
+        "min_copper_edge_clearance": 1.0,
         "min_hole_clearance": 0.30479999999999996,
         "min_hole_to_hole": 0.508,
         "min_microvia_diameter": 0.2032,
@@ -359,7 +359,7 @@
     "pinned_symbol_libs": []
   },
   "meta": {
-    "filename": "minputer.kicad_pro",
+    "filename": "zediac.kicad_pro",
     "version": 1
   },
   "net_settings": {
