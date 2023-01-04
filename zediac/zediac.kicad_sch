@@ -13729,7 +13729,7 @@
     (property "Value" "USB_C_Plug_USB2.0" (id 1) (at 553.72 161.29 0)
       (effects (font (size 1.27 1.27)) (justify right))
     )
-    (property "Footprint" "Connector_USB:USB_C_Receptacle_Amphenol_12401548E4-2A" (id 2) (at 560.07 181.61 0)
+    (property "Footprint" "custom_footprints:USB_C_Receptacle_Molex_217179-0001" (id 2) (at 560.07 181.61 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Datasheet" "https://www.usb.org/sites/default/files/documents/usb_type-c.zip" (id 3) (at 560.07 181.61 0)
@@ -16759,7 +16759,7 @@
       (reference "J8") (unit 1) (value "Barrel_Jack") (footprint "Connector_BarrelJack:BarrelJack_Horizontal")
     )
     (path "/75ca4686-7373-4b7e-a7ec-fb85333122b5"
-      (reference "P1") (unit 1) (value "USB_C_Plug_USB2.0") (footprint "Connector_USB:USB_C_Receptacle_Amphenol_12401548E4-2A")
+      (reference "P1") (unit 1) (value "USB_C_Plug_USB2.0") (footprint "custom_footprints:USB_C_Receptacle_Molex_217179-0001")
     )
     (path "/dfc09957-9bd6-492b-b089-d0f30ad4bc4d"
       (reference "Q1") (unit 1) (value "Q_PMOS_GDS") (footprint "Package_TO_SOT_SMD:TO-263-3_TabPin2")
