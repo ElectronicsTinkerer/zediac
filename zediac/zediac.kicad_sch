@@ -2625,11 +2625,11 @@
         )
       )
     )
-    (symbol "Custom:DS1318" (in_bom yes) (on_board yes)
+    (symbol "Custom:DS1813" (in_bom yes) (on_board yes)
       (property "Reference" "U?" (id 0) (at 0 7.62 0)
         (effects (font (size 1.27 1.27)))
       )
-      (property "Value" "DS1318" (id 1) (at 0 5.08 0)
+      (property "Value" "DS1813" (id 1) (at 0 5.08 0)
         (effects (font (size 1.27 1.27)))
       )
       (property "Footprint" "" (id 2) (at 0 5.08 0)
@@ -2641,13 +2641,13 @@
       (property "ki_fp_filters" "TO*92* SO*23" (id 4) (at 0 0 0)
         (effects (font (size 1.27 1.27)) hide)
       )
-      (symbol "DS1318_0_1"
+      (symbol "DS1813_0_1"
         (rectangle (start -3.81 3.81) (end 2.54 -3.81)
           (stroke (width 0) (type default) (color 0 0 0 0))
           (fill (type background))
         )
       )
-      (symbol "DS1318_1_1"
+      (symbol "DS1813_1_1"
         (pin open_collector inverted (at 5.08 0 180) (length 2.54)
           (name "RST" (effects (font (size 1.27 1.27))))
           (number "1" (effects (font (size 1.27 1.27))))
@@ -12665,10 +12665,10 @@
   (symbol (lib_id "Device:R") (at 500.38 157.48 0) (unit 1)
     (in_bom yes) (on_board yes) (fields_autoplaced)
     (uuid 3c491e21-730f-4d33-90a3-2b1f3ec49ad2)
-    (property "Reference" "R19" (id 0) (at 502.285 156.2099 0)
+    (property "Reference" "R19" (id 0) (at 502.92 156.2099 0)
       (effects (font (size 1.27 1.27)) (justify left))
     )
-    (property "Value" "1k" (id 1) (at 502.285 158.7499 0)
+    (property "Value" "10k" (id 1) (at 502.92 158.7499 0)
       (effects (font (size 1.27 1.27)) (justify left))
     )
     (property "Footprint" "Resistor_SMD:R_0603_1608Metric_Pad0.98x0.95mm_HandSolder" (id 2) (at 498.602 157.48 90)
@@ -14343,12 +14343,12 @@
     (pin "7" (uuid 280c0637-1028-42b4-90e7-e4c4fd3bb0ed))
   )
 
-  (symbol (lib_id "Custom:DS1318") (at 28.575 121.92 0) (unit 1)
+  (symbol (lib_id "Custom:DS1813") (at 28.575 121.92 0) (unit 1)
     (in_bom yes) (on_board yes) (fields_autoplaced)
     (uuid 937bb1d0-c74d-43d3-9bcd-75947f52436f)
     (property "Reference" "U2" (id 0) (at 27.94 113.03 0))
-    (property "Value" "DS1318" (id 1) (at 27.94 115.57 0))
-    (property "Footprint" "Package_TO_SOT_THT:TO-92L_HandSolder" (id 2) (at 28.575 116.84 0)
+    (property "Value" "DS1813" (id 1) (at 27.94 115.57 0))
+    (property "Footprint" "Package_TO_SOT_THT:TO-92L_Wide" (id 2) (at 28.575 116.84 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Datasheet" "" (id 3) (at 28.575 116.84 0)
@@ -16819,7 +16819,7 @@
       (reference "R18") (unit 1) (value "1k") (footprint "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal")
     )
     (path "/3c491e21-730f-4d33-90a3-2b1f3ec49ad2"
-      (reference "R19") (unit 1) (value "1k") (footprint "Resistor_SMD:R_0603_1608Metric_Pad0.98x0.95mm_HandSolder")
+      (reference "R19") (unit 1) (value "10k") (footprint "Resistor_SMD:R_0603_1608Metric_Pad0.98x0.95mm_HandSolder")
     )
     (path "/8249e76e-078a-4515-91ee-81ac27464c05"
       (reference "R20") (unit 1) (value "10k") (footprint "Resistor_SMD:R_0603_1608Metric_Pad0.98x0.95mm_HandSolder")
@@ -16858,7 +16858,7 @@
       (reference "U1") (unit 1) (value "W65C22") (footprint "Package_DIP:DIP-40_W15.24mm")
     )
     (path "/937bb1d0-c74d-43d3-9bcd-75947f52436f"
-      (reference "U2") (unit 1) (value "DS1318") (footprint "Package_TO_SOT_THT:TO-92L_HandSolder")
+      (reference "U2") (unit 1) (value "DS1813") (footprint "Package_TO_SOT_THT:TO-92L_Wide")
     )
     (path "/64ac6e46-0339-4963-8e52-c85ce7450117"
       (reference "U3") (unit 1) (value "W65C816") (footprint "Package_DIP:DIP-40_W15.24mm")
