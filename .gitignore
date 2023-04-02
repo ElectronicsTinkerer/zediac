@@ -1,9 +1,12 @@
+# Directories
+gerb
+svg
+
+# Files
 *.zip
 *bak
 *~
 _autosave*
 *.csv
 *.xml
-
-gerb
 
