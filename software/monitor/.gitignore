@@ -2,3 +2,9 @@
 build
 
 # Files
+.emacs.desktop
+.emacs.desktop.lock
+*.bak
+*~
+\#*
+.\#*
