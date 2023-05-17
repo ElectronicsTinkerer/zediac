@@ -1,0 +1,6 @@
+# We're interested in viewing the UART's memory
+mw1 c000
+
+# Actually load information
+load mem c000 ./build/monitor.bin
+
