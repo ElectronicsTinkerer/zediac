@@ -4,3 +4,7 @@ mw1 c000
 # Actually load information
 load mem c000 ./build/monitor.bin
 
+# Uart
+uart c750 8808 6500
+
+
