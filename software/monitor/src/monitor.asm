@@ -117,14 +117,16 @@ monitor:
     plb
 
 _mon_prompt:
+    phy
     pea _txt_prompt             ; Display prompt
     ldx #SYS_PUTS
     cop 0
     plx                         ; Restore stack
+    ply
     
 _mon_next:  
     jsr _getc                   ; Get a charcter (blocking)
-    cmp #KEY_CR                 ; Enter?
+    cmp #KEY_LF                 ; Enter?
     beq _mon_exec               ; Yes, run the command
     cmp #KEY_BS                 ; Backspace?
     beq _mon_backspace          ; Yes
@@ -140,8 +142,8 @@ _mon_echo:
     jmp _mon_next
 
 _mon_backspace:
-    cpy #0
-    bne _mon_next
+    dey
+    bpl _mon_next
     ldy 0
     jmp _mon_next
 
@@ -419,8 +421,8 @@ _sys_puts:
     sep #$20
     rep #$10
     ldy #0
-_sys_puts_loop: ; was (5,s),y for jsr
-	lda (7,s),y                 ; Get the first byte of the string at the strptr position
+_sys_puts_loop:
+	lda (5,s),y                 ; Get the first byte of the string at the strptr position
 	beq _sys_puts_donstr	    ;  | If the value pulled is $00, we are done
     cmp #'\n'                   ; If newline, print a CR first
     bne _sys_puts_echo          ; Otherwise just print the character like normal
