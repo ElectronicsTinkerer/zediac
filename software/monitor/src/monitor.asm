@@ -24,7 +24,6 @@
 ;;; ------------------------------------
 ;;;  TEXT BANK
 ;;; ------------------------------------
-
 _txt_prompt:
     .byte "[ ^[[32mZEDIAC^[[0m ] > ",0
 _txt_eol_reset:
@@ -33,6 +32,8 @@ _txt_clr_screen:
     .byte "^[[2J^[[H",0      ; Clear screen and home cursor to (0,0)
 _txt_backspace:
     .byte "^[[K",0           ; Delete at cursor
+_txt_unk_cmd:
+    .byte "! Unknown command\n",0
 
 
 ;;; ------------------------------------
@@ -105,51 +106,66 @@ _uart0_init_good:
     stx UART0_LCR               ; Restore line settings
     ;; END: UART0 INIT
 
+    ;; Clear screen
+    pea _txt_clr_screen         ; Display prompt
+    ldx #SYS_PUTS
+    cop 0
+    plx                         ; Restore stack
+
     ;; MONITOR PROMPT
 monitor:    
     .xl
     .as
     rep #$10
     sep #$20
-    ldy #0                      ; Set up line index
-    lda #1                      ; Switch data bank to 1 so that we have a full 32k for line operations
-    pha
-    plb
-
 _mon_prompt:
-    phy
     pea _txt_prompt             ; Display prompt
     ldx #SYS_PUTS
     cop 0
     plx                         ; Restore stack
-    ply
+
+    ldx #0                      ; Set up line index
     
 _mon_next:  
     jsr _getc                   ; Get a charcter (blocking)
+    jsr _putc
     cmp #KEY_LF                 ; Enter?
     beq _mon_exec               ; Yes, run the command
     cmp #KEY_BS                 ; Backspace?
     beq _mon_backspace          ; Yes
     ;; Otherwise, try to add char to buffer
-    iny
+    inx
     bpl _mon_echo               ; If not in out of 32K mem, just keep going
-    ldy #$7fff                  ; Maximum Y value
+    ldx #$7fff                  ; Maximum X value
     jmp _mon_next
     
 _mon_echo:
-    sta 0,y                     ; Buffer starts at address 0
-    jsr _putc
+    sta $10000,x                ; Buffer starts at address 0 in bank 1
     jmp _mon_next
 
 _mon_backspace:
-    dey
-    bpl _mon_next
-    ldy 0
+    phx
+    pea _txt_backspace          ; Delete char
+    ldx #SYS_PUTS
+    cop 0
+    plx                         ; Restore stack
+    plx
+    dex                         ; Back up index
+    bpl _mon_next               ; If at beginning of line, we're done
+    lda #' '                    ; otherwise, restore deleted char
+    jsr _putc
+    ldx #0                      ; and reset the line index
     jmp _mon_next
 
     ;; Run a command in the buffer
-_mon_exec:  
+_mon_exec:
 
+    ;; Not a valid command, output an error
+    pea _txt_unk_cmd            ; Text string
+    ldx #SYS_PUTS
+    cop 0
+    plx                         ; Restore stack
+    jmp _mon_prompt
     
     
 
@@ -163,6 +179,8 @@ _err:
 
     
 ;;; Print a character to UART0
+;;; Requirements:
+;;;   .as
 ;;; Args:
 ;;;   A - The character to print
 ;;; Uses:
@@ -180,6 +198,8 @@ _putc_loop:
     rts
 
 ;;; Get a single character from UART0, blocking
+;;; Requirements:
+;;;   .as
 ;;; Args:
 ;;;   NONE
 ;;; Uses:
@@ -195,6 +215,8 @@ _getc:
 
     
 ;;; Delay for some amount of time
+;;; Requirements:
+;;;   NONE
 ;;; Args:
 ;;;   Y - Y * ~1000 cycles to wait (DESTRUCTIVE)
 ;;;       NOTE: a value of 0 is maximum delay, 1 is minimum
@@ -203,6 +225,7 @@ _getc:
 ;;; Return:
 ;;;   NONE
 _delay:
+    php
     .xl
     sep #$10
 _d_init:   
@@ -212,6 +235,7 @@ _d_loop:
     bne _delay_loop
     dey
     bne _delay_init
+    plp
     rts
 
 
@@ -225,6 +249,8 @@ _d_loop:
 
     
 ;;; Delay for some amount of time
+;;; Requirements:
+;;;   NONE
 ;;; Args:
 ;;;   Y - Y * ~1000 cycles to wait (DESTRUCTIVE)
 ;;;       NOTE: a value of 0 is maximum delay, 1 is minimum
@@ -246,6 +272,8 @@ _sys_delay_loop:
 
     
 ;;; Print a word (in A) as HEX to UART0
+;;; Requirements:
+;;;   NONE
 ;;; Args:
 ;;;   A - The byte to print (DESTRUCTIVE)
 ;;; Uses:
@@ -263,6 +291,8 @@ _sys_puthex_word:
 
     
 ;;; Print a byte (in A) as HEX to UART0
+;;; Requirements:
+;;;   NONE
 ;;; Args:
 ;;;   A - The byte to print (DESTRUCTIVE)
 ;;; Uses:
@@ -293,6 +323,8 @@ _prhex:                     ; Prints a single hex digit in LSN of A
     
     
 ;;; Subroutine to print a byte in A in dec form (destructive)
+;;; Requirements:
+;;;   NONE
 ;;; Args:
 ;;;   A - The byte or word to print (DESTRUCTIVE)
 ;;;       The width of A (M flag) determines if a word or byte
@@ -346,6 +378,8 @@ _sys_putdec_cnvbit:
 
     
 ;;; Get a single character from UART0, blocking
+;;; Requirements:
+;;;   NONE
 ;;; Args:
 ;;;   NONE
 ;;; Uses:
@@ -364,6 +398,8 @@ _sys_getc_loop:
 
     
 ;;; Get a single character from UART0, nonblocking
+;;; Requirements:
+;;;   NONE
 ;;; Args:
 ;;;   NONE
 ;;; Uses:
@@ -389,6 +425,8 @@ _sys_getc_nb_none:
 
 
 ;;; Send a single character to UART0, blocking
+;;; Requirements:
+;;;   NONE
 ;;; Args:
 ;;;   A - the character to send
 ;;; Uses:
@@ -409,6 +447,8 @@ _sys_putc_loop:
 
     
 ;;; Echo a null-terminated string to the UART0
+;;; Requirements:
+;;;   NONE
 ;;; Args:
 ;;;   (S) - string to print
 ;;; Uses:
