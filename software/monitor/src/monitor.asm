@@ -20,6 +20,40 @@
     .rom ROM_SIZE
     .org ROM_BASE
 
+direct_page     .equ $7f00
+arg_stack       .equ $0         
+buf             .equ $010000    ; Input line buffer
+
+;;; ------------------------------------
+;;;  DIRECT PAGE VARIABLES
+;;; ------------------------------------
+syscall_tmp0    .equ $0
+syscall_tmp1    .equ $1
+syscall_tmp2    .equ $2
+syscall_tmp3    .equ $3
+syscall_tmp4    .equ $4
+syscall_tmp5    .equ $5
+syscall_tmp6    .equ $6
+syscall_tmp7    .equ $7
+
+enum mon {
+    tmp0 = $10,
+    tmp1,
+    tmp2,
+    tmp3,
+    tmp4,
+    tmp5,
+    tmp6,
+    tmp7
+}
+
+xsav            .equ mon.tmp0
+ysav            .equ mon.tmp2
+arg_sp          .equ mon.tmp4
+line_start      .equ mon.tmp6
+    
+info_y          .equ mon.tmp0
+
     
 ;;; ------------------------------------
 ;;;  TEXT BANK
@@ -28,27 +62,44 @@ _txt_prompt:
     .byte "[ ^[[32mZEDIAC^[[0m ] > ",0
 _txt_eol_reset:
     .byte "^[[0m\n",0        ; Reset style to term default
-_txt_clr_screen:
+_txt_clr_scrn:
     .byte "^[[2J^[[H",0      ; Clear screen and home cursor to (0,0)
 _txt_backspace:
     .byte "^[[K",0           ; Delete at cursor
 _txt_unk_cmd:
-    .byte "! Unknown command\n",0
-
-
-;;; ------------------------------------
-;;;  DIRECT PAGE VARIABLES
-;;; ------------------------------------
-syscall_tmp0    .equ 0
-syscall_tmp1    .equ 1
-syscall_tmp2    .equ 2
-syscall_tmp3    .equ 3
-syscall_tmp4    .equ 4
-syscall_tmp5    .equ 5
-syscall_tmp6    .equ 6
-syscall_tmp7    .equ 7
+    .byte "Command not found.\n",0
+_txt_help:
+    .byte "Available commands:\n"
+    .byte " help ... Display avaiable commands\n"
+    .byte " clear .. Clear the terminal\n"
+    .byte 0
 
     
+;;; ------------------------------------
+;;;  COMMAND BANK
+;;; ------------------------------------
+;;; Command table (each entry is 8 bytes):
+;;; 2 bytes: jump address for command
+;;; 6 bytes: (zero-terminated or 6 chars) string of command
+
+CMD_ENTRY_SIZE  .equ 8           ; In bytes (must be a power of 2)
+CMD_STR_SIZE    .equ 6           ; In bytes
+
+    ;; Each entry must be aligned by the size of an entry, hence the
+    ;; funky .org expression before each entry
+    .org {$ & {CMD_ENTRY_SIZE-1} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
+_cmd_table:
+    .word _help
+    .byt "help",0
+    .org {$ & {CMD_ENTRY_SIZE-1} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
+    .word _clear
+    .byt "clear",0
+    .org {$ & {CMD_ENTRY_SIZE-1} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
+    .word _info
+    .byt "info",0
+_cmd_table_end:                 ; Keep me! Used to determine number of entries in table
+
+
 ;;; ------------------------------------
 ;;;  ENTRY POINT
 ;;; ------------------------------------
@@ -58,9 +109,12 @@ emu_vector_reset:
     xce
     
     .xl
-    rep #$10
-    ldx #$01ff                  ; Init stack
+    .al
+    rep #$30
+    ldx #direct_page-1          ; Init stack
     txs
+    lda #direct_page            ; Set direct page to just above stack
+    tcd
     .as
     .xs
     sep #$30                    ; 8-bit mode
@@ -107,7 +161,7 @@ _uart0_init_good:
     ;; END: UART0 INIT
 
     ;; Clear screen
-    pea _txt_clr_screen         ; Display prompt
+    pea _txt_clr_scrn           ; Display prompt
     ldx #SYS_PUTS
     cop 0
     plx                         ; Restore stack
@@ -129,37 +183,169 @@ _mon_prompt:
 _mon_next:  
     jsr _getc                   ; Get a charcter (blocking)
     jsr _putc
+    cmp #03                     ; ^C?
+    beq _mon_prompt             ; Yes, reset line
     cmp #KEY_LF                 ; Enter?
     beq _mon_exec               ; Yes, run the command
     cmp #KEY_BS                 ; Backspace?
     beq _mon_backspace          ; Yes
     ;; Otherwise, try to add char to buffer
-    inx
-    bpl _mon_echo               ; If not in out of 32K mem, just keep going
-    ldx #$7fff                  ; Maximum X value
-    jmp _mon_next
     
-_mon_echo:
-    sta $10000,x                ; Buffer starts at address 0 in bank 1
+    sta buf,x                   ; Buffer starts at address 0 in bank 1
+    inx
+    bpl _mon_next               ; If not in out of 32K mem, just keep going
+    ldx #$7fff                  ; Maximum X value
     jmp _mon_next
 
 _mon_backspace:
     phx
-    pea _txt_backspace          ; Delete char
-    ldx #SYS_PUTS
-    cop 0
-    plx                         ; Restore stack
+    ;; pea _txt_backspace          ; Delete char
+    ;; ldx #SYS_PUTS
+    ;; cop 0
+    ;; plx                         ; Restore stack
     plx
     dex                         ; Back up index
     bpl _mon_next               ; If at beginning of line, we're done
     lda #' '                    ; otherwise, restore deleted char
+    jsr _putc
+    lda #$08                    ; Bell
     jsr _putc
     ldx #0                      ; and reset the line index
     jmp _mon_next
 
     ;; Run a command in the buffer
 _mon_exec:
+    cpx #0                      ; Ignore lines with no content
+    beq _mon_prompt
+    stx xsav                    ; Save X for later comparison
 
+    ;; Remove any whitespace from the front of the command
+    ldx #-1
+_me_rm_wspc:
+    inx
+    cpx xsav                    ; End of line = no command present
+    bcs _mon_prompt
+    lda buf,x                   ; Get char from line
+    cmp #' '
+    beq _me_rm_wspc             ; Is a space
+    cmp #'\t'
+    beq _me_rm_wspc             ; Is a tab
+    stx line_start              ; Save the starting position of the command
+    
+    ;; Parse line. Jumps to a command after tokenizing the remainder of the line.
+    ;; Pushes last arg first. The last data pushed is a single byte count of the number
+    ;; of arguments available on the stack
+
+    ldy #0                      ; Command table index (O(n) search)
+_me_loop_init:
+    ldx line_start              ; X is line index
+_me_loop:
+    lda _cmd_table+2,y          ; Get char from command entry
+    beq _me_eoc_chk
+    cmp buf,x                   ; Get char from line
+    bne _me_eoc_chk
+    iny
+    inx
+    cpy #CMD_STR_SIZE
+    bne _me_loop
+    dex
+    ;; If max string size, check for equality
+_me_eoc_chk:
+    cmp #0
+    beq _me_eoc_gc
+    cpy #CMD_STR_SIZE
+    bne _me_eoc_chk_nxt
+    ;; FT
+_me_eoc_gc:
+    cpx xsav                    ; If at end of entered line, setup stack
+    beq _me_args
+    lda buf,x                   ; Get char from line
+    cmp #' '                    ; Check to see if it is whitespace
+    beq _me_args
+    cmp #'\t'
+    bne _me_eoc_chk_nxt         ; Not whitespace, try another command
+    ;; FT
+_me_args:
+    ;; A command was matched.
+    ;; Now go through the remainder of the line and set up the args on the stack.
+    sty ysav
+    .al                         ; Set up arg pre-stack
+    rep #$20
+    lda #arg_stack
+    sta arg_sp
+    .as
+    sep #$20
+    cpx xsav                    ; End of line = done parsing args
+    bcs _me_run_cmd
+
+_me_args_delim:
+    lda #0
+    sta buf,x                   ; Tokenize inputs
+_me_ad_next:
+    inx
+    cpx xsav                    ; End of line = done parsing args
+    bcs _me_cmd_setup
+    lda buf,x                   ; Get char from line
+    cmp #' '
+    beq _me_args_delim          ; Is a space
+    cmp #'\t'
+    beq _me_args_delim          ; Is a tab
+    ;; Not a space: put it's pointer onto the stack
+    .al
+    rep #$20
+    txa
+    sta (arg_sp)
+    inc arg_sp                  ; Post-inc the SP
+    inc arg_sp
+    .as
+    sep #$20
+    bra _me_ad_next
+    
+_me_cmd_setup:
+    ;; Set up the stack with args pointers
+    .al
+    rep #$20
+    ldx arg_sp
+_me_cs_loop:
+    txy                         ; Test if x is zero
+    beq _me_run_cmd             ; Arg pseudo stack is empty => we're done here
+    dex                         ; Pre-dec the SP
+    dex
+    lda |0,x                    ; Get the arg pointer (force abs addressing)
+    pha                         ; and put it onto the call stack
+    bra _me_cs_loop
+    
+_me_run_cmd:
+    .as
+    sep #$20
+    lda arg_sp
+    lsr                         ; Divide stack pointer by two
+    pha                         ; Store the number of arguments to the command as the last entry on the stack
+    .al
+    rep #$20
+    lda ysav                    ; Restore command table index
+    and #{$ffff-{CMD_ENTRY_SIZE-1}} ; Mask off lowest bits (indicating index into the current entry)      
+    tax                         ; X now has the base address of the entry (which is a pointer)
+    .as
+    sep #$20
+    jmp (_cmd_table,x)          ; Execute command
+
+_me_eoc_chk_nxt:
+    .al
+    rep #$20
+    ;; Increment index to next command entry
+    tya
+    and #{$ffff-{CMD_ENTRY_SIZE-1}} ; Mask off lowest bits (which indicate the index into the current entry)
+    clc
+    adc #CMD_ENTRY_SIZE
+    tay
+    .as
+    sep #$20
+    cpy #_cmd_table_end - _cmd_table ; Get the size of the table in bytes
+    bcs _me_cmd_invalid
+    jmp _me_loop_init
+
+_me_cmd_invalid:    
     ;; Not a valid command, output an error
     pea _txt_unk_cmd            ; Text string
     ldx #SYS_PUTS
@@ -168,8 +354,68 @@ _mon_exec:
     jmp _mon_prompt
     
     
+;;; ------------------------------------
+;;;  COMMANDS
+;;; ------------------------------------
 
+_help:
+    pea _txt_help
+    ldx #SYS_PUTS
+    cop 0
+    plx
+    jmp monitor
 
+    
+_clear:
+    pea _txt_clr_scrn
+    ldx #SYS_PUTS
+    cop 0
+    plx
+    jmp monitor
+
+;;; Prints argument info (for debugging)
+_info:
+    pea _txt_info_arg_cnt
+    ldx #SYS_PUTS
+    cop 0
+    plx
+    pla                         ; Get argc off stack
+    sta info_y                  ; and save for later
+    ldx #SYS_PD
+    cop 0
+    lda '\n'
+    jsr _putc
+
+    lda info_y
+    asl                         ; Multiply count by 2
+    tay
+_info_argv_loop:
+    beq _info_done
+    phy
+    pea _txt_info_arg           ; Print "arg"
+    ldx #SYS_PUTS
+    cop 0
+    plx
+    ply
+    lda (0,s),y                 ; Get the pointer to the arg string
+    pha
+    ldx #SYS_PUTS
+    cop 0
+    plx
+    lda '\n'
+    dey
+    dey
+    jsr _putc
+    
+    jmp _info_argv_loop
+    
+_info_done: 
+    jmp monitor
+
+_txt_info_arg_cnt:
+    .byte "argc: ",0
+_txt_info_arg:
+    .byte "arg: ",0
     
 ;;; ------------------------------------
 ;;;  UTILITY FUNCTIONS
