@@ -6,6 +6,7 @@
 ;;; Updates:
 ;;; 2023-04-28: Created file
 ;;; 2023-05-16: Added VIA0 register defs
+;;; 2023-06-09: Update symbols to make use of new .def SLIME support
 ;;;
 ;;;
 

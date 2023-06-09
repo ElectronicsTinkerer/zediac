@@ -11,13 +11,13 @@
 
 ;;; KEEP IN SYNC WITH THE SYSCALL TABLE (_syscall_table)
 ;;; IN THE monitor.asm FILE!
-SYS_DELAY   .equ 0
-SYS_PH      .equ 2
-SYS_PD      .equ 4
-SYS_PHW     .equ 6
-SYS_PDW     .equ 8
-SYS_PUTS    .equ 10
-SYS_GETC    .equ 12
-SYS_PUTC    .equ 14
+SYS_DELAY   .def 0
+SYS_PH      .def 2
+SYS_PD      .def 4
+SYS_PHW     .def 6
+SYS_PDW     .def 8
+SYS_PUTS    .def 10
+SYS_GETC    .def 12
+SYS_PUTC    .def 14
 
     

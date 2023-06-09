@@ -8,6 +8,7 @@
 ;;; 2023-04-28: Added header includes for HW and keyboard
 ;;; 2023-05-16: Add VIA and UART initialization
 ;;; 2023-06-03: Implement basic IO and print utilities; start monitor prompt
+;;; 2023-06-09: Update symbols to make use of new .def SLIME support
 ;;;
 
 #include "../inc/syscalls.inc"
@@ -27,16 +28,18 @@ buf             .equ $010000    ; Input line buffer
 ;;; ------------------------------------
 ;;;  DIRECT PAGE VARIABLES
 ;;; ------------------------------------
-syscall_tmp0    .equ $0
-syscall_tmp1    .equ $1
-syscall_tmp2    .equ $2
-syscall_tmp3    .equ $3
-syscall_tmp4    .equ $4
-syscall_tmp5    .equ $5
-syscall_tmp6    .equ $6
-syscall_tmp7    .equ $7
-
-enum mon {
+enum define syscall {
+    tmp0 = $0,
+    tmp1,
+    tmp2,
+    tmp3,
+    tmp4,
+    tmp5,
+    tmp6,
+    tmp7
+}
+    
+enum define mon {
     tmp0 = $10,
     tmp1,
     tmp2,
@@ -47,12 +50,12 @@ enum mon {
     tmp7
 }
 
-xsav            .equ mon.tmp0
-ysav            .equ mon.tmp2
-arg_sp          .equ mon.tmp4
-line_start      .equ mon.tmp6
-    
-info_y          .equ mon.tmp0
+xsav            .def mon.tmp0
+ysav            .def mon.tmp2
+arg_sp          .def mon.tmp4
+line_start      .def mon.tmp6
+
+info_y          .def mon.tmp0
 
     
 ;;; ------------------------------------
@@ -82,8 +85,8 @@ _txt_help:
 ;;; 2 bytes: jump address for command
 ;;; 6 bytes: (zero-terminated or 6 chars) string of command
 
-CMD_ENTRY_SIZE  .equ 8           ; In bytes (must be a power of 2)
-CMD_STR_SIZE    .equ 6           ; In bytes
+CMD_ENTRY_SIZE  .def 8           ; In bytes (must be a power of 2)
+CMD_STR_SIZE    .def 6           ; In bytes
 
     ;; Each entry must be aligned by the size of an entry, hence the
     ;; funky .org expression before each entry
@@ -586,38 +589,38 @@ _sys_putdec_word:
     php                         ; Save A's width
     .al
     rep #$20
-    stz syscall_tmp4
+    stz syscall.tmp4
     plp                         ; Restore A's width
-    sta syscall_tmp4            ; Save binary value to be converted
+    sta syscall.tmp4            ; Save binary value to be converted
     .al
     .xs
     rep #$20
     sep #$18                    ; Also set D flag
-    stz syscall_tmp0            ; Clear temp var
-    stz syscall_tmp1            ; 16-bit A, so should clear bcd_tmp+2
+    stz syscall.tmp0            ; Clear temp var
+    stz syscall.tmp1            ; 16-bit A, so should clear bcd_tmp+2
     ldx #16                     ; Number of bits to do
 
 _sys_putdec_cnvbit:
-    asl syscall_tmp4            ; Shift out bit
-    lda syscall_tmp0            ; Add into result
-    adc syscall_tmp0
-    sta syscall_tmp0
+    asl syscall.tmp4            ; Shift out bit
+    lda syscall.tmp0            ; Add into result
+    adc syscall.tmp0
+    sta syscall.tmp0
     .as
     sep #$20
-    lda syscall_tmp2            ; Upper byte
-    adc syscall_tmp2
-    sta syscall_tmp2
+    lda syscall.tmp2            ; Upper byte
+    adc syscall.tmp2
+    sta syscall.tmp2
     .al
     rep #$20
     dex                         ; Next bit
     bne _putdec_cnvbit
     
-    lda syscall_tmp1            ; Upper 2 bytes of decimal number
+    lda syscall.tmp1            ; Upper 2 bytes of decimal number
     ldx #SYS_PHW
     cop 0                       ; Print word
     .as
     sep #$20
-    lda syscall_tmp0            ; this loads 8-bit value
+    lda syscall.tmp0            ; this loads 8-bit value
     ldx #SYS_PHW
     cop 0                       ; Print word
     rti
