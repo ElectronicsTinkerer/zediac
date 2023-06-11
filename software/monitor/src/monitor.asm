@@ -67,14 +67,14 @@ info_end        .def mon.tmp2
 ;;; ------------------------------------
 _txt_prompt:
     .byte "[ ^[[32mZEDIAC^[[0m ] > ",0
-_txt_endl:
+_txt_eol:
     .byte "\n", 0               ; End of line
 _txt_eol_reset:
     .byte "^[[0m\n",0           ; Reset style to term default
 _txt_clr_scrn:
     .byte "^[[2J^[[H",0         ; Clear screen and home cursor to (0,0)
 _txt_backspace:
-    .byte "^[[K",0              ; Delete at cursor
+    .byte "\b^[[K",0            ; Back up one char then delete at cursor
 _txt_unk_cmd:
     .byte "Command not found.\n",0
 _txt_help:
@@ -194,15 +194,19 @@ _mon_prompt:
     
 _mon_next:  
     jsr _getc                   ; Get a charcter (blocking)
-    jsr _putc
     cmp #03                     ; ^C?
     beq _mon_prompt             ; Yes, reset line
-    cmp #KEY_LF                 ; Enter?
+    cmp #KEY_LF                 ; Enter? (LF)
+    beq _mon_exec               ; Yes, run the command
+    cmp #KEY_CR                 ; Enter? (CR)
     beq _mon_exec               ; Yes, run the command
     cmp #KEY_BS                 ; Backspace?
     beq _mon_backspace          ; Yes
+    cmp #KEY_DEL                ; DEL (modern backspace key)?
+    beq _mon_backspace          ; Yes
     ;; Otherwise, try to add char to buffer
     
+    jsr _putc
     sta buf,x                   ; Buffer starts at address 0 in bank 1
     inx
     cpx #$7fff                  ; If not in out of 32K mem, just keep going
@@ -213,22 +217,30 @@ _mon_next:
 
 _mon_backspace:
     phx
-    ;; pea _txt_backspace          ; Delete char
-    ;; ldx #SYS_PUTS
-    ;; cop 0
-    ;; plx                         ; Restore stack
+    pea _txt_backspace          ; Delete char
+    ldx #SYS_PUTS
+    cop 0
+    plx                         ; Restore stack
     plx
     dex                         ; Back up index
     bpl _mon_next               ; If at beginning of line, we're done
     lda #' '                    ; otherwise, restore deleted char
     jsr _putc
-    lda #$08                    ; Bell
+    lda #KEY_BELL               ; Bell
     jsr _putc
-    ldx #0                      ; and reset the line index
+    inx                         ; and reset the line index
     jmp _mon_next
 
     ;; Run a command in the buffer
 _mon_exec:
+    phx
+    ;; Print a newline
+    pea _txt_eol
+    ldx #SYS_PUTS
+    cop 0
+    plx                         ; Restore stack
+
+    plx
     cpx #0                      ; Ignore lines with no content
     beq _mon_prompt
     stx xsav                    ; Save X for later comparison
