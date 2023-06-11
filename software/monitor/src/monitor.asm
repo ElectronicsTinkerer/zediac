@@ -531,12 +531,14 @@ _sys_delay_loop:
 ;;;   NONE
 _sys_puthex_word:
     .as
+    .xs
     sep #$20
     xba
     ldx #SYS_PH
     cop 0
     xba
-    jmp _sys_puthex
+    ;; jmp _sys_puthex
+    ;; *********** FALLTHROUGH ***********
 
     
 ;;; Print a byte (in A) as HEX to UART0
@@ -589,7 +591,8 @@ _sys_putdec_word:
     php                         ; Save A's width
     .al
     rep #$20
-    stz syscall.tmp4
+    stz syscall.tmp0
+    stz syscall.tmp2
     plp                         ; Restore A's width
     sta syscall.tmp4            ; Save binary value to be converted
     .al
@@ -621,8 +624,8 @@ _sys_putdec_cnvbit:
     .as
     sep #$20
     lda syscall.tmp0            ; this loads 8-bit value
-    ldx #SYS_PHW
-    cop 0                       ; Print word
+    ldx #SYS_PH
+    cop 0                       ; Print byte
     rti
 
     

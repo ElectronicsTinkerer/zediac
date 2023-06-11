@@ -1,10 +1,16 @@
-# We're interested in viewing the UART's memory
-mw1 c000
 
 # Actually load information
 load mem c000 ./build/monitor.bin
+sym ./build/monitor.sym
 
 # Uart
 uart c750 8808 6500
+
+# Debugging
+bre monitor
+bre _me_args
+
+# We're interested in viewing the UART's memory
+# mw1 DUART_BASE
 
 
