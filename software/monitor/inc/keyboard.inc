@@ -12,10 +12,13 @@
 ;; #ifndef KEYBOARD_INC
 ;; #define KEYBOARD_INC
 
-KEY_BS              .def $08
-KEY_LF              .def $0a
-KEY_CR              .def $0d
-KEY_ESC             .def $1b    
+KEY_BELL            .def '\a'
+KEY_BS              .def '\b'
+KEY_LF              .def '\n'
+KEY_CR              .def '\r'
+KEY_ESC             .def '\['   
+KEY_DEL             .def 127
+
     
 ;; #endif
 
