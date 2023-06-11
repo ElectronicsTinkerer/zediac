@@ -47,15 +47,19 @@ enum define mon {
     tmp4,
     tmp5,
     tmp6,
-    tmp7
+    tmp7,
+    tmp8,
+    tmp9
 }
 
 xsav            .def mon.tmp0
 ysav            .def mon.tmp2
 arg_sp          .def mon.tmp4
 line_start      .def mon.tmp6
-
+wspc_skip       .def mon.tmp8
+    
 info_y          .def mon.tmp0
+info_end        .def mon.tmp2
 
     
 ;;; ------------------------------------
@@ -63,12 +67,14 @@ info_y          .def mon.tmp0
 ;;; ------------------------------------
 _txt_prompt:
     .byte "[ ^[[32mZEDIAC^[[0m ] > ",0
+_txt_endl:
+    .byte "\n", 0               ; End of line
 _txt_eol_reset:
-    .byte "^[[0m\n",0        ; Reset style to term default
+    .byte "^[[0m\n",0           ; Reset style to term default
 _txt_clr_scrn:
-    .byte "^[[2J^[[H",0      ; Clear screen and home cursor to (0,0)
+    .byte "^[[2J^[[H",0         ; Clear screen and home cursor to (0,0)
 _txt_backspace:
-    .byte "^[[K",0           ; Delete at cursor
+    .byte "^[[K",0              ; Delete at cursor
 _txt_unk_cmd:
     .byte "Command not found.\n",0
 _txt_help:
@@ -114,8 +120,6 @@ emu_vector_reset:
     .xl
     .al
     rep #$30
-    ldx #direct_page-1          ; Init stack
-    txs
     lda #direct_page            ; Set direct page to just above stack
     tcd
     .as
@@ -175,6 +179,11 @@ monitor:
     .as
     rep #$10
     sep #$20
+    ldx #direct_page-1          ; Init stack
+    txs
+    lda #0                      ; Set data bank to 0
+    pha
+    plb
 _mon_prompt:
     pea _txt_prompt             ; Display prompt
     ldx #SYS_PUTS
@@ -196,8 +205,10 @@ _mon_next:
     
     sta buf,x                   ; Buffer starts at address 0 in bank 1
     inx
-    bpl _mon_next               ; If not in out of 32K mem, just keep going
-    ldx #$7fff                  ; Maximum X value
+    cpx #$7fff                  ; If not in out of 32K mem, just keep going
+    bcc _mon_next               ; Also, do buffer size -1 so that it can be null-terminated
+    
+    dex                         ; Maximum X value
     jmp _mon_next
 
 _mon_backspace:
@@ -221,6 +232,9 @@ _mon_exec:
     cpx #0                      ; Ignore lines with no content
     beq _mon_prompt
     stx xsav                    ; Save X for later comparison
+    
+    lda #0                      ; Null terminate input (used for argument passing)
+    sta buf,x
 
     ;; Remove any whitespace from the front of the command
     ldx #-1
@@ -260,7 +274,7 @@ _me_eoc_chk:
     bne _me_eoc_chk_nxt
     ;; FT
 _me_eoc_gc:
-    cpx xsav                    ; If at end of entered line, setup stack
+    cpx xsav                    ; If at end of entered command, setup stack
     beq _me_args
     lda buf,x                   ; Get char from line
     cmp #' '                    ; Check to see if it is whitespace
@@ -282,6 +296,7 @@ _me_args:
     bcs _me_run_cmd
 
 _me_args_delim:
+    stz wspc_skip               ; Whitespace encountered
     lda #0
     sta buf,x                   ; Tokenize inputs
 _me_ad_next:
@@ -293,7 +308,12 @@ _me_ad_next:
     beq _me_args_delim          ; Is a space
     cmp #'\t'
     beq _me_args_delim          ; Is a tab
-    ;; Not a space: put it's pointer onto the stack
+    ;; Not a space
+    lda wspc_skip               ; Is this the first non-whitespace character?
+    bne _me_ad_next             ; Nope. Ignore the char
+    lda #1                      ; Yes, mark it
+    sta wspc_skip
+    ;; First char in token, put it's pointer onto the stack
     .al
     rep #$20
     txa
@@ -319,6 +339,9 @@ _me_cs_loop:
     bra _me_cs_loop
     
 _me_run_cmd:
+    tsx                         ; Put a pointer to the stack itself onto the stack
+    inx
+    phx
     .as
     sep #$20
     lda arg_sp
@@ -329,8 +352,6 @@ _me_run_cmd:
     lda ysav                    ; Restore command table index
     and #{$ffff-{CMD_ENTRY_SIZE-1}} ; Mask off lowest bits (indicating index into the current entry)      
     tax                         ; X now has the base address of the entry (which is a pointer)
-    .as
-    sep #$20
     jmp (_cmd_table,x)          ; Execute command
 
 _me_eoc_chk_nxt:
@@ -378,47 +399,71 @@ _clear:
 
 ;;; Prints argument info (for debugging)
 _info:
+    .as
+    .xl
+    sep #$20
+    rep #$10
     pea _txt_info_arg_cnt
     ldx #SYS_PUTS
     cop 0
     plx
     pla                         ; Get argc off stack
-    sta info_y                  ; and save for later
+    pha
     ldx #SYS_PD
     cop 0
-    lda '\n'
-    jsr _putc
 
-    lda info_y
+    pla
     asl                         ; Multiply count by 2
-    tay
+    sta info_end                ; and save for later
+    stz info_end + 1
+    ldy #0
+    sty info_y
+    
 _info_argv_loop:
-    beq _info_done
-    phy
-    pea _txt_info_arg           ; Print "arg"
-    ldx #SYS_PUTS
-    cop 0
-    plx
-    ply
-    lda (0,s),y                 ; Get the pointer to the arg string
+    lda #0                      ; Set data bank to 0
     pha
+    plb
+
+    ldy info_y
+    cpy info_end                ; Check if we are out of args to read in
+    beq _info_done
+
+    pea _txt_info_arg           ; Print "arg: "
     ldx #SYS_PUTS
     cop 0
     plx
-    lda '\n'
-    dey
-    dey
-    jsr _putc
+
+    .al
+    rep #$20
+    ldy info_y
+    lda (1,s),y                 ; Get the pointer to the arg string
+    pha
+    iny                         ; and dec the "stack pointer"
+    iny
+    sty info_y
+
+    .as
+    sep #$20
+    lda #{buf >> 16} & $ff      ; Get buffer's DBR
+    pha                         ; Set program data bank to read off the input stack
+    plb
+    ;;  pha up a few lines pushed the string pointer onto the stack
+    ldx #SYS_PUTS
+    cop 0
+    plx
     
     jmp _info_argv_loop
     
 _info_done: 
+    pea _txt_endl
+    ldx #SYS_PUTS
+    cop 0                       ; Don't need to restore the stack before returning to the monitor
     jmp monitor
 
 _txt_info_arg_cnt:
     .byte "argc: ",0
 _txt_info_arg:
-    .byte "arg: ",0
+    .byte "\narg: ",0
     
 ;;; ------------------------------------
 ;;;  UTILITY FUNCTIONS
@@ -439,11 +484,11 @@ _err:
 _putc:                          ; "echo" from older kernels
     pha
 _putc_loop: 
-    lda UART0_LSR               ; Check for Tx empty
+    lda >UART0_LSR              ; Check for Tx empty
     and #$20
     beq _putc_loop              ; Not enough empty spaces in Tx FIFO
     pla
-    sta UART0_THR
+    sta >UART0_THR
     rts
 
 ;;; Get a single character from UART0, blocking
@@ -456,10 +501,10 @@ _putc_loop:
 ;;; Return:
 ;;;   A contains the received character
 _getc:  
-    lda UART0_LSR               ; Check for Rx data (4)
+    lda >UART0_LSR              ; Check for Rx data (4)
     and #$01                    ; (2)
     beq _getc                   ; No Rx data, keep checking
-    lda UART0_RHR               ; Yes, Get byte from Rx FIFO (4)
+    lda >UART0_RHR              ; Yes, Get byte from Rx FIFO (4)
     rts
 
     
@@ -642,10 +687,10 @@ _sys_getc:
     .as
     sep #$20
 _sys_getc_loop: 
-    lda UART0_LSR               ; Check for Rx data (4)
+    lda >UART0_LSR              ; Check for Rx data (4)
     and #$01                    ; (2)
     beq _sys_getc_loop          ; No Rx data, keep checking
-    lda UART0_RHR               ; Yes, Get byte from Rx FIFO (4)
+    lda >UART0_RHR              ; Yes, Get byte from Rx FIFO (4)
     rti
 
     
@@ -662,13 +707,13 @@ _sys_getc_loop:
 _sys_getc_nb:
     .as
     sep #$20
-    lda UART0_LSR               ; Check for Rx data (4)
+    lda >UART0_LSR              ; Check for Rx data (4)
     and #$01                    ; (2)
     beq _sys_getc_nb_none       ; No Rx data, signal as such
     lda 2,S                     ; Get status reg vrom before interrupt
     ora #$01                    ; Set carry high
     sta 2,S                     ; Status Reg after RTI
-    lda UART0_RHR               ; Yes, Get byte from Rx FIFO (4)
+    lda >UART0_RHR              ; Yes, Get byte from Rx FIFO (4)
     rti 
 _sys_getc_nb_none:  
     and #$fe                    ; Clear Carry
@@ -690,11 +735,11 @@ _sys_putc:
     sep #$20
     pha
 _sys_putc_loop: 
-    lda UART0_LSR               ; Check for Tx empty
+    lda >UART0_LSR              ; Check for Tx empty
     and #$20
     beq _sys_putc_loop          ; Not enough empty spaces in Tx FIFO
     pla
-    sta UART0_THR
+    sta >UART0_THR
     rti
 
     
