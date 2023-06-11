@@ -58,8 +58,8 @@ arg_sp          .def mon.tmp4
 line_start      .def mon.tmp6
 wspc_skip       .def mon.tmp8
     
-info_y          .def mon.tmp0
-info_end        .def mon.tmp2
+args_y          .def mon.tmp0
+args_end        .def mon.tmp2
 
     
 ;;; ------------------------------------
@@ -79,8 +79,9 @@ _txt_unk_cmd:
     .byte "Command not found.\n",0
 _txt_help:
     .byte "Available commands:\n"
-    .byte " help ... Display avaiable commands\n"
-    .byte " clear .. Clear the terminal\n"
+    .byte " > help              Display available commands\n"
+    .byte " > clear             Clear the terminal\n"
+    .byte " > args [arg1] [...] Print stack info for passed arguments\n"
     .byte 0
 
     
@@ -104,8 +105,8 @@ _cmd_table:
     .word _clear
     .byt "clear",0
     .org {$ & {CMD_ENTRY_SIZE-1} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
-    .word _info
-    .byt "info",0
+    .word _args
+    .byt "args",0
 _cmd_table_end:                 ; Keep me! Used to determine number of entries in table
 
 
@@ -409,13 +410,14 @@ _clear:
     plx
     jmp monitor
 
+    
 ;;; Prints argument info (for debugging)
-_info:
+_args:
     .as
     .xl
     sep #$20
     rep #$10
-    pea _txt_info_arg_cnt
+    pea _txt_args_arg_cnt
     ldx #SYS_PUTS
     cop 0
     plx
@@ -426,33 +428,33 @@ _info:
 
     pla
     asl                         ; Multiply count by 2
-    sta info_end                ; and save for later
-    stz info_end + 1
+    sta args_end                ; and save for later
+    stz args_end + 1
     ldy #0
-    sty info_y
+    sty args_y
     
-_info_argv_loop:
+_args_argv_loop:
     lda #0                      ; Set data bank to 0
     pha
     plb
 
-    ldy info_y
-    cpy info_end                ; Check if we are out of args to read in
-    beq _info_done
+    ldy args_y
+    cpy args_end                ; Check if we are out of args to read in
+    beq _args_done
 
-    pea _txt_info_arg           ; Print "arg: "
+    pea _txt_args_arg           ; Print "arg: "
     ldx #SYS_PUTS
     cop 0
     plx
 
     .al
     rep #$20
-    ldy info_y
+    ldy args_y
     lda (1,s),y                 ; Get the pointer to the arg string
     pha
     iny                         ; and dec the "stack pointer"
     iny
-    sty info_y
+    sty args_y
 
     .as
     sep #$20
@@ -464,17 +466,17 @@ _info_argv_loop:
     cop 0
     plx
     
-    jmp _info_argv_loop
+    jmp _args_argv_loop
     
-_info_done: 
-    pea _txt_endl
+_args_done: 
+    pea _txt_eol
     ldx #SYS_PUTS
     cop 0                       ; Don't need to restore the stack before returning to the monitor
     jmp monitor
 
-_txt_info_arg_cnt:
+_txt_args_arg_cnt:
     .byte "argc: ",0
-_txt_info_arg:
+_txt_args_arg:
     .byte "\narg: ",0
     
 ;;; ------------------------------------
