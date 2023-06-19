@@ -24,7 +24,9 @@
 direct_page     .equ $7f00
 arg_stack       .equ $0         
 buf             .equ $010000    ; Input line buffer
+xrecv_buf       .equ $020000    ; XMODEM receive / send buffer base
 
+    
 ;;; ------------------------------------
 ;;;  DIRECT PAGE VARIABLES
 ;;; ------------------------------------
@@ -61,6 +63,9 @@ wspc_skip       .def mon.tmp8
 args_y          .def mon.tmp0
 args_end        .def mon.tmp2
 
+xr_blk          .def mon.tmp0   ; 16 bits
+xr_blkptr       .def mon.tmp2   ; 24 bits!
+xr_chksum       .def mon.tmp5   ; 8  bits
     
 ;;; ------------------------------------
 ;;;  TEXT BANK
@@ -97,16 +102,19 @@ CMD_STR_SIZE    .def 6           ; In bytes
 
     ;; Each entry must be aligned by the size of an entry, hence the
     ;; funky .org expression before each entry
-    .org {$ & {CMD_ENTRY_SIZE-1} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
+    .org {{$ & {CMD_ENTRY_SIZE-1}} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
 _cmd_table:
     .word _help
-    .byt "help",0
-    .org {$ & {CMD_ENTRY_SIZE-1} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
+    .byte "help",0
+    .org {{$ & {CMD_ENTRY_SIZE-1}} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
     .word _clear
-    .byt "clear",0
-    .org {$ & {CMD_ENTRY_SIZE-1} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
+    .byte "clear",0
+    .org {{$ & {CMD_ENTRY_SIZE-1}} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
     .word _args
-    .byt "args",0
+    .byte "args",0
+    .org {{$ & {CMD_ENTRY_SIZE-1}} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
+    .word _xrecv
+    .byte "xrecv",0
 _cmd_table_end:                 ; Keep me! Used to determine number of entries in table
 
 
@@ -395,23 +403,27 @@ _me_cmd_invalid:
 ;;;  COMMANDS
 ;;; ------------------------------------
 
+    .al
+    .xl
 _help:
     pea _txt_help
     ldx #SYS_PUTS
     cop 0
-    plx
     jmp monitor
 
     
+    .al
+    .xl
 _clear:
     pea _txt_clr_scrn
     ldx #SYS_PUTS
     cop 0
-    plx
     jmp monitor
 
     
 ;;; Prints argument info (for debugging)
+    .al
+    .xl
 _args:
     .as
     .xl
@@ -478,6 +490,154 @@ _txt_args_arg_cnt:
     .byte "argc: ",0
 _txt_args_arg:
     .byte "\narg: ",0
+
+    
+;;; XMODEM transfer RECEIVE command
+;;; Transferred data is stored in bank 2
+XRECV_NAK_TIMEOUT   .def 1     ; In seconds
+XRECV_BLK_TIMEOUT   .def 1      ; In seconds
+XR_NT_LOAD          .def 50_000 ; In cycles
+XR_NT_COUNT         .def {XRECV_NAK_TIMEOUT * SYS_CLK_HZ} / XR_NT_LOAD   
+XR_BT_COUNT         .def {XRECV_BLK_TIMEOUT * SYS_CLK_HZ} / XR_NT_LOAD   
+
+_xrecv:
+    .as
+    .xl
+    sep #$20
+    rep #$10
+    pea _txt_xrecv_wait
+    ldx #SYS_PUTS
+    cop 0
+    plx
+
+_xr_wait_timeout:
+    stz xr_blk
+    ;; lda #KEY_NAK                ; Send NAK
+    ;; jsr _putc
+    ;; ;; lda #'.'
+    ;; ;; jsr _putc
+    ;; ldx #XR_NT_COUNT            ; Initialize count timeout
+    ;; jsr _getc_to                ; Timeout getc
+    ;; bcc _xr_wait_timeout
+    ;; cmp #KEY_SOH
+    ;; bne _xr_wait_timeout        ; If the main timeout is exhausted, resend NAK
+    ;; ;; Received start, init block number
+    ;; jmp _xr_soh
+
+_xr_nak:    
+    lda #KEY_NAK                ; Send NAK
+    jsr _putc
+    ;; lda #'.'
+    ;; jsr _putc
+_xr_wait_for_soh:
+    ldx #XR_BT_COUNT            ; Initialize count timeout
+    jsr _getc_to                ; Timeout getc
+    bcc _xr_nak                 ; No char, timeout occured
+    cmp #KEY_SOH
+    beq _xr_soh                 ; Handle new block
+    cmp #KEY_CTRL_C             ; Cancel
+    beq _xr_done
+    cmp #KEY_CTRL_R             ; Restart
+    beq _xr_wait_timeout
+    cmp #KEY_EOT
+    bne _xr_nak
+    lda #KEY_ACK                ; ACK EOT
+    jsr _putc
+_xr_done:   
+    jmp monitor                 ; DONE
+
+_xr_can:       
+    lda #KEY_CAN                ; Send CAN
+    jsr _putc
+    jmp monitor                 ; FAILED
+
+_xr_soh:
+    ;;  SOH was just received, get the block number
+    ldx #XR_BT_COUNT            ; Initialize count timeout
+    jsr _getc_to                ; Timeout getc
+    bcc _xr_nak                 ; No char, timeout occured
+    cmp xr_blk
+    bcc _xr_can                 ; Invalid block number
+    beq _xr_inv_blkno           ; If current no == received, don't inc the block number
+    dea
+    cmp xr_blk                  ; Is this the next block?
+    bne _xr_can                 ; Invalid block number, CAN
+    ;; Yes, this is the next block
+    inc xr_blk
+    ;; bmi  ;??? What to do if too long?
+_xr_inv_blkno:  
+    ;; Get inverted block number
+    ldx #XR_BT_COUNT            ; Initialize count timeout
+    jsr _getc_to                ; Timeout getc
+    bcc _xr_nak                 ; No char, timeout occured
+    eor #$ff
+    cmp xr_blk
+    bne _xr_can                 ; Invalid block number
+
+    ;;  Now, we're getting data
+    ldy #xrecv_buf >> 8
+    sty xr_blkptr+1
+    lda #xrecv_buf & $ff
+    sta xr_blkptr
+    ldy #0
+    cld
+_xr_data_loop:
+    phy
+    ldx #XR_BT_COUNT            ; Initialize count timeout
+    jsr _getc_to                ; Timeout getc
+    ply
+    bcc _xr_nak                 ; No char, timeout occured
+    sta [xr_blkptr],y
+    clc
+    adc xr_chksum
+    sta xr_chksum
+    iny
+    tya
+    bpl _xr_data_loop           ; If we have not received 128 bytes, keep going
+
+    ;; TODO: What if this is a repeat block?
+    .al                         ; Set block pointer to next region
+    rep #$20
+    clc
+    and #$00ff
+    adc xr_blkptr
+    sta xr_blkptr
+    .as
+    sep #$20
+    adc xr_blkptr+2
+    sta xr_blkptr
+    
+    ;; Now check checksum
+    ldx #XR_BT_COUNT            ; Initialize count timeout
+    jsr _getc_to                ; Timeout getc
+    bcc _xr_nak_jmp             ; No char, timeout occured
+    cmp xr_chksum
+    bne _xr_nak_jmp             ; Checksum failed, NAK
+    jmp _xr_soh                 ; Success! Wait for EOT
+    
+_xr_nak_jmp:                    ; Range extension
+    jmp _xr_nak
+
+;;; Get char with timeout
+;;; X - number of XR_NT_LOAD cycles to wait
+_getc_to:    
+_gct_wait:
+    jsr _getc_nb                ; Nonblocking get char
+    bcc _gct_delay              ; No character, continue timeout countdown
+_gct_done:  
+    rts                         ; Got char, return
+_gct_delay:
+    dex
+    beq _gct_done
+    phx
+    ldy #XR_NT_LOAD
+    jsr _delay
+    plx
+    jmp _gct_wait
+
+_txt_xrecv_wait:
+    .byte "Waiting",0
+
     
 ;;; ------------------------------------
 ;;;  UTILITY FUNCTIONS
@@ -520,6 +680,29 @@ _getc:
     beq _getc                   ; No Rx data, keep checking
     lda >UART0_RHR              ; Yes, Get byte from Rx FIFO (4)
     rts
+    
+    
+;;; Get a single character from UART0, nonblocking
+;;; Requirements:
+;;;   .as
+;;; Args:
+;;;   NONE
+;;; Uses:
+;;;   A
+;;; Return:
+;;;   A contains the received character, if available
+;;;   c = 1 if chararcter was available, 0 otherwise
+    .as
+_getc_nb:
+    lda >UART0_LSR              ; Check for Rx data (4)
+    and #$01                    ; (2)
+    beq _getc_nb_cc             ; No Rx data, signal as such
+    sec                         ; Got character -> set carry
+    lda >UART0_RHR              ; Yes, Get byte from Rx FIFO (4)
+    rts
+_getc_nb_cc:  
+    clc                         ; No character -> clear carry
+    rts
 
     
 ;;; Delay for some amount of time
@@ -540,9 +723,9 @@ _d_init:
     ldx #248
 _d_loop:
     dex
-    bne _delay_loop
+    bne _d_loop
     dey
-    bne _delay_init
+    bne _d_init
     plp
     rts
 
@@ -724,7 +907,7 @@ _sys_getc_nb:
     lda >UART0_LSR              ; Check for Rx data (4)
     and #$01                    ; (2)
     beq _sys_getc_nb_none       ; No Rx data, signal as such
-    lda 2,S                     ; Get status reg vrom before interrupt
+    lda 2,S                     ; Get status reg from before interrupt
     ora #$01                    ; Set carry high
     sta 2,S                     ; Status Reg after RTI
     lda >UART0_RHR              ; Yes, Get byte from Rx FIFO (4)
