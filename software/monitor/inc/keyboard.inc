@@ -12,10 +12,17 @@
 ;; #ifndef KEYBOARD_INC
 ;; #define KEYBOARD_INC
 
+KEY_SOH             .def $01
+KEY_CTRL_C          .def $03
+KEY_EOT             .def $04
+KEY_ACK             .def $06
 KEY_BELL            .def '\a'
 KEY_BS              .def '\b'
 KEY_LF              .def '\n'
 KEY_CR              .def '\r'
+KEY_CTRL_R          .def $12
+KEY_NAK             .def $15
+KEY_CAN             .def $18
 KEY_ESC             .def '\['   
 KEY_DEL             .def 127
 
