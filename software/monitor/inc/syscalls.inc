@@ -11,16 +11,18 @@
 
 ;;; KEEP IN SYNC WITH THE SYSCALL TABLE (_syscall_table)
 ;;; IN THE monitor.asm FILE!
-SYS_DELAY   .def 0
-SYS_PH      .def 2
-SYS_PD      .def 4
-SYS_PHW     .def 6
-SYS_PDW     .def 8
-SYS_PUTS    .def 10
-SYS_GETC    .def 12
-SYS_PUTC    .def 14
-SYS_PARX    .def 16
-
+enum define SYS {
+    DELAY = 0,
+    PH = 2,
+    PD = 4,
+    PHW = 6,
+    PDW = 8,
+    PUTS = 10,
+    GETC = 12,
+    GETCNB = 14,
+    PUTC = 16,
+    PARX = 18
+}
 
 
 

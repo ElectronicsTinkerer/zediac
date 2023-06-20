@@ -176,7 +176,7 @@ emu_vector_reset:
     lda #'A'                    ; Test value
     sta UART0_THR
     ldy #2                      ; 2000 cycles
-    ldx #SYS_DELAY
+    ldx #SYS.DELAY
     cop 0                       ; Wait for byte to be recieved
     lda UART0_RHR
     cmp #'A'                    ; Did we get the same character back?
@@ -195,7 +195,7 @@ _uart0_init_good:
 
     ;; Clear screen
     pea _txt_clr_scrn           ; Display prompt
-    ldx #SYS_PUTS
+    ldx #SYS.PUTS
     cop 0
     plx                         ; Restore stack
 
@@ -229,7 +229,7 @@ monitor:
     plb
 _mon_prompt:
     pea _txt_prompt             ; Display prompt
-    ldx #SYS_PUTS
+    ldx #SYS.PUTS
     cop 0
     plx                         ; Restore stack
 
@@ -261,7 +261,7 @@ _mon_next:
 _mon_backspace:
     phx
     pea _txt_backspace          ; Delete char
-    ldx #SYS_PUTS
+    ldx #SYS.PUTS
     cop 0
     plx                         ; Restore stack
     plx
@@ -279,7 +279,7 @@ _mon_exec:
     phx
     ;; Print a newline
     pea _txt_eol
-    ldx #SYS_PUTS
+    ldx #SYS.PUTS
     cop 0
     plx                         ; Restore stack
 
@@ -427,7 +427,7 @@ _me_eoc_chk_nxt:
 _me_cmd_invalid:    
     ;; Not a valid command, output an error
     pea _txt_unk_cmd            ; Text string
-    ldx #SYS_PUTS
+    ldx #SYS.PUTS
     cop 0
     plx                         ; Restore stack
     jmp _mon_prompt
@@ -441,7 +441,7 @@ _me_cmd_invalid:
     .xl
 _help:
     pea _txt_help
-    ldx #SYS_PUTS
+    ldx #SYS.PUTS
     cop 0
     jmp monitor
 
@@ -450,7 +450,7 @@ _help:
     .xl
 _clear:
     pea _txt_clr_scrn
-    ldx #SYS_PUTS
+    ldx #SYS.PUTS
     cop 0
     jmp monitor
 
@@ -482,7 +482,7 @@ _gs:
     plx
     pha                         ; Add space for the return value
     phx
-    ldx #SYS_PARX               ; Convert the arg into an address
+    ldx #SYS.PARX               ; Convert the arg into an address
     cop 0
     plx                         ; Remove pointer from stack
     bcc _gs_nothex              ; Not a valid address, error
@@ -510,7 +510,7 @@ _gs_jml:
 _gs_expd_arg:
 _gs_nothex:
     pea _txt_gs_arg
-    ldx #SYS_PUTS
+    ldx #SYS.PUTS
     cop 0
     jmp monitor
 
@@ -527,12 +527,12 @@ _args:
     sep #$20
     rep #$10
     pea _txt_args_arg_cnt
-    ldx #SYS_PUTS
+    ldx #SYS.PUTS
     cop 0
     plx
     pla                         ; Get argc off stack
     pha
-    ldx #SYS_PD
+    ldx #SYS.PD
     cop 0
 
     pla
@@ -552,7 +552,7 @@ _args_argv_loop:
     beq _args_done
 
     pea _txt_args_arg           ; Print "arg: "
-    ldx #SYS_PUTS
+    ldx #SYS.PUTS
     cop 0
     plx
 
@@ -571,7 +571,7 @@ _args_argv_loop:
     pha                         ; Set program data bank to read off the input stack
     plb
     ;;  pha up a few lines pushed the string pointer onto the stack
-    ldx #SYS_PUTS
+    ldx #SYS.PUTS
     cop 0
     plx
     
@@ -579,7 +579,7 @@ _args_argv_loop:
     
 _args_done: 
     pea _txt_eol
-    ldx #SYS_PUTS
+    ldx #SYS.PUTS
     cop 0                       ; Don't need to restore the stack before returning to the monitor
     jmp monitor
 
@@ -603,7 +603,7 @@ _xrecv:
     sep #$20
     rep #$10
     pea _txt_xrecv_wait
-    ldx #SYS_PUTS
+    ldx #SYS.PUTS
     cop 0
     plx
 
@@ -873,7 +873,7 @@ _sys_puthex_word:
     .xs
     sep #$20
     xba
-    ldx #SYS_PH
+    ldx #SYS.PH
     cop 0
     xba
     ;; jmp _sys_puthex
@@ -958,12 +958,12 @@ _sys_putdec_cnvbit:
     bne _putdec_cnvbit
     
     lda syscall.tmp1            ; Upper 2 bytes of decimal number
-    ldx #SYS_PHW
+    ldx #SYS.PHW
     cop 0                       ; Print word
     .as
     sep #$20
     lda syscall.tmp0            ; this loads 8-bit value
-    ldx #SYS_PH
+    ldx #SYS.PH
     cop 0                       ; Print byte
     rti
 
@@ -1157,6 +1157,7 @@ _syscall_table:
     .word _sys_putdec_word
     .word _sys_puts
     .word _sys_getc
+    .word _sys_getc_nb
     .word _sys_putc
     .word _sys_parsehex
 
