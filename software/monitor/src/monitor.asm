@@ -54,11 +54,22 @@ enum define mon {
     tmp9
 }
 
+s_px_l          .def syscall.tmp0
+s_px_m          .def syscall.tmp1
+s_px_h          .def syscall.tmp2
+    
+    
 xsav            .def mon.tmp0
 ysav            .def mon.tmp2
 arg_sp          .def mon.tmp4
 line_start      .def mon.tmp6
 wspc_skip       .def mon.tmp8
+
+gs_addr_l       .def mon.tmp0
+gs_addr_m       .def mon.tmp1
+gs_addr_h       .def mon.tmp2
+gs_argc         .def mon.tmp3
+gs_mode         .def mon.tmp4
     
 args_y          .def mon.tmp0
 args_end        .def mon.tmp2
@@ -115,6 +126,12 @@ _cmd_table:
     .org {{$ & {CMD_ENTRY_SIZE-1}} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
     .word _xrecv
     .byte "xrecv",0
+    .org {{$ & {CMD_ENTRY_SIZE-1}} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
+    .word _go
+    .byte "go",0
+    .org {{$ & {CMD_ENTRY_SIZE-1}} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
+    .word _gosub
+    .byte "gosub",0
 _cmd_table_end:                 ; Keep me! Used to determine number of entries in table
 
 
@@ -182,13 +199,30 @@ _uart0_init_good:
     cop 0
     plx                         ; Restore stack
 
-    ;; MONITOR PROMPT
+;;; ============= MONITOR PROMPT =============
+;;; The MONITOR allows passing arguments to commands.
+;;; It does this by pushing the following items onto the stack:
+;;; 
+;;; top ---> 8 bits  | argc (8-bit)
+;;;          16 bits | address of argv[0] on the stack
+;;;          16 bits | argv[0]
+;;;          16 bits | argv[1]
+;;;          ...
+;;; 
+;;; Why a 16-bit address as the penultimate stack entry? -> This
+;;; allows the (d,s),y addressing mode to grab an arbitrary entry
+;;; off the stack without having to do a bunch of popping or SMC.
+;;; 
+;;; Additionally, the address of each argv entry is within the
+;;; same bank as the monitor's input buffer since the parser
+;;; simply replaces whitespace with a null terminator for each
+;;; argument.
 monitor:    
     .xl
     .as
     rep #$10
     sep #$20
-    ldx #direct_page-1          ; Init stack
+    ldx #direct_page-1          ; Init stack (REQUIRED - many commands assume they can trash the stack!)
     txs
     lda #0                      ; Set data bank to 0
     pha
@@ -420,6 +454,69 @@ _clear:
     cop 0
     jmp monitor
 
+
+;;; JML to a user-specified address
+;;; JSL to a user-specified address
+    .al
+    .xl
+_go:
+    .as
+    sep #$20
+    lda #$80
+    sta gs_mode
+    bne _gs
+_gosub:
+    .as
+    sep #$20
+    stz gs_mode
+_gs:    
+    pla                         ; Pull argc off the stack
+    sta gs_argc                 ; Save argc for later
+    beq _gs_expd_arg            ; If argc == 0, error
+    
+    lda #{buf >> 16} & $ff      ; Get buffer's DBR
+    pha                         ; Set program data bank to read off the input stack
+    plb
+    plx                         ; Remove the self-stack pointer
+    ;; At this point, the top of the stack is the pointer to the first arg
+    plx
+    pha                         ; Add space for the return value
+    phx
+    ldx #SYS_PARX               ; Convert the arg into an address
+    cop 0
+    plx                         ; Remove pointer from stack
+    bcc _gs_nothex              ; Not a valid address, error
+    tay
+    sty gs_addr_l
+    pla                         ; Get high byte of return value
+    sta gs_addr_h
+    ;; Now restore the stack with all the argc and whatnot...
+    tsx                         ; Put a pointer to the stack itself onto the stack
+    inx
+    phx
+    lda gs_argc                 ; argc - 1
+    dea
+    pha
+    ;; Check the mode that we're in
+    bit gs_mode
+    bmi _gs_jml
+    ;; Simulate a jsl [gs_addr_l]
+    phk
+    pea _gs_jml+3
+_gs_jml:    
+    jmp [gs_addr_l]
+    jmp monitor                 ; Used for the jsl case
+
+_gs_expd_arg:
+_gs_nothex:
+    pea _txt_gs_arg
+    ldx #SYS_PUTS
+    cop 0
+    jmp monitor
+
+_txt_gs_arg:
+    .byte "Expected hex value for address.\n",0
+    
     
 ;;; Prints argument info (for debugging)
     .al
@@ -463,7 +560,7 @@ _args_argv_loop:
     rep #$20
     ldy args_y
     lda (1,s),y                 ; Get the pointer to the arg string
-    pha
+    pha                         ; TODO: IS THIS A STACK LEAK???
     iny                         ; and dec the "stack pointer"
     iny
     sty args_y
@@ -691,7 +788,7 @@ _getc:
 ;;;   A
 ;;; Return:
 ;;;   A contains the received character, if available
-;;;   c = 1 if chararcter was available, 0 otherwise
+;;;   p.c = 1 if chararcter was available, 0 otherwise
     .as
 _getc_nb:
     lda >UART0_LSR              ; Check for Rx data (4)
@@ -900,21 +997,21 @@ _sys_getc_loop:
 ;;;   A
 ;;; Return:
 ;;;   A contains the received character, if available
-;;;   c = 1 if chararcter was available, 0 otherwise
+;;;   p.c = 1 if chararcter was available, 0 otherwise
 _sys_getc_nb:
     .as
     sep #$20
     lda >UART0_LSR              ; Check for Rx data (4)
     and #$01                    ; (2)
     beq _sys_getc_nb_none       ; No Rx data, signal as such
-    lda 2,S                     ; Get status reg from before interrupt
+    lda 1,S                     ; Get status reg from before interrupt
     ora #$01                    ; Set carry high
-    sta 2,S                     ; Status Reg after RTI
+    sta 1,S                     ; Status Reg after RTI
     lda >UART0_RHR              ; Yes, Get byte from Rx FIFO (4)
     rti 
 _sys_getc_nb_none:  
     and #$fe                    ; Clear Carry
-    sta 2,S                     ; Status Reg after RTI
+    sta 1,S                     ; Status Reg after RTI
     rti
 
 
@@ -972,6 +1069,79 @@ _sys_puts_donstr:
     rti
     
 
+;;; Parse a null-terminated string for a hex value
+;;; Requirements:
+;;;   NONE
+;;; Args: [top to bottom]
+;;;   (S) - string to print
+;;;   S+2 - Parsed value high byte [return]
+;;; Uses:
+;;;   A, X, Y
+;;; Return:
+;;;   C   - Holds 16-bit hex value.
+;;;   S+2 - Holds bits 23..16 of the parsed value
+;;;   p.c - 1 if at least one hex char was given, 0 otherwise
+_sys_parsehex:
+    .as
+    .xl
+    sep #$20
+    rep #$10
+    ldy #0
+    stz s_px_l
+    sty s_px_m
+_sys_ph_loop:    
+    clc
+    lda (5,s),y                 ; Get the first byte of the string at the strptr position
+    beq _sys_ph_done            ;  | If the value pulled is $00, we are done
+    eor #$30                    ; Maps digits to 0-9
+    cmp #9+1                    ; Is this a decimal digit?
+    bcc _sys_ph_dig             ; Yes
+    and #$5f                    ; Ignore case
+    adc #$a8                    ; Map to $FA-$FF
+    cmp #$fa                    ; Is this a hex character?
+    bcc _sys_ph_done            ; No
+
+_sys_ph_dig:
+    asl                         ; Move hex digit to MSB of A
+    asl
+    asl
+    asl
+
+    ldx #$04                    ; Shift count (# of bits in a hex char)
+_sys_ph_hexshift:
+    asl                         ; Shift digit left, moving bit into Carry
+    rol s_px_l                  ; Rotate into hex storage location
+    rol s_px_m
+    rol s_px_h
+    dex                         ; Done 4 shifts?
+    bne _sys_ph_hexshift        ; No, do another
+    iny                         ; Advance text index
+    bra _sys_ph_loop            ; Next character
+
+_sys_ph_done:
+    bne _sys_ph_nov             ; If no invalid chars were given
+    tyx                         ; ...
+    beq _sys_ph_nov             ; and at least one character was given,
+                                ; then set the carry flag:
+    lda 1,S                     ; Get status reg from before interrupt
+    ora #$01                    ; Set carry high
+    sta 1,S                     ; Status Reg after RTI
+    bra _sys_ph_lval
+    
+_sys_ph_nov:
+    lda 1,S                     ; Get status reg from before interrupt
+    and #$fe                    ; Clear Carry
+    sta 1,S                     ; Status Reg after RTI
+_sys_ph_lval:   
+    lda s_px_h
+    sta 7,s                     ; S+2 high byte return
+    lda s_px_m                  ; LSB and Middle Byte are in C
+    xba
+    lda s_px_l
+    rti
+    
+
+    
 ;;; ------------------------------------
 ;;;  SYSCALL TABLE
 ;;; ------------------------------------
@@ -988,6 +1158,7 @@ _syscall_table:
     .word _sys_puts
     .word _sys_getc
     .word _sys_putc
+    .word _sys_parsehex
 
     
 ;;; ------------------------------------
