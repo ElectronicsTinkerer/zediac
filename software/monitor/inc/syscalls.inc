@@ -19,5 +19,9 @@ SYS_PDW     .def 8
 SYS_PUTS    .def 10
 SYS_GETC    .def 12
 SYS_PUTC    .def 14
+SYS_PARX    .def 16
 
-    
+
+
+
+
