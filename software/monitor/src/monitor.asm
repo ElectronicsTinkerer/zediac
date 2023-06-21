@@ -21,11 +21,14 @@
     .rom ROM_SIZE
     .org ROM_BASE
 
+smc_base        .equ $0000
+; stack_base    .equ $7e00      ; Really $7eff but for keeping things "page orientated" ...
 direct_page     .equ $7f00
 arg_stack       .equ $0         
 buf             .equ $010000    ; Input line buffer
 xrecv_buf       .equ $020000    ; XMODEM receive / send buffer base
 
+GETC_LOAD       .def 50_000     ; Clock cycles
     
 ;;; ------------------------------------
 ;;;  DIRECT PAGE VARIABLES
@@ -51,7 +54,13 @@ enum define mon {
     tmp6,
     tmp7,
     tmp8,
-    tmp9
+    tmp9,
+    tmp10,
+    tmp11,
+    tmp12,
+    tmp13,
+    tmp14,
+    tmp15
 }
 
 s_px_l          .def syscall.tmp0
@@ -77,6 +86,18 @@ args_end        .def mon.tmp2
 xr_blk          .def mon.tmp0   ; 16 bits
 xr_blkptr       .def mon.tmp2   ; 24 bits!
 xr_chksum       .def mon.tmp5   ; 8  bits
+
+copy_s_l        .def mon.tmp0   ; 8  bits
+copy_s_m        .def mon.tmp1   ; 8  bits
+copy_s_h        .def mon.tmp2   ; 8  bits
+copy_d_l        .def mon.tmp3   ; 8  bits
+copy_d_m        .def mon.tmp4   ; 8  bits
+copy_d_h        .def mon.tmp5   ; 8  bits
+copy_c_l        .def mon.tmp6   ; 8  bits
+copy_c_m        .def mon.tmp7   ; 8  bits
+copy_c_h        .def mon.tmp8   ; 8  bits (written to but unused)
+copy_x          .def mon.tmp9   ; 16 bits
+
     
 ;;; ------------------------------------
 ;;;  TEXT BANK
@@ -95,9 +116,12 @@ _txt_unk_cmd:
     .byte "Command not found.\n",0
 _txt_help:
     .byte "Available commands:\n"
-    .byte " > help              Display available commands\n"
-    .byte " > clear             Clear the terminal\n"
-    .byte " > args [arg1] [...] Print stack info for passed arguments\n"
+    .byte " > args [arg1] [...]        Print stack info for passed arguments\n"
+    .byte " > clear                    Clear the terminal\n"
+    .byte " > copy ssssss dddddd cccc  Copy c bytes from s to d\n"
+    .byte " > go xxxxxx                JML to an address\n"
+    .byte " > gosub xxxxxx             JSL to an address (RTL to MONITOR)\n"
+    .byte " > help                     Display available commands\n"
     .byte 0
 
     
@@ -132,6 +156,9 @@ _cmd_table:
     .org {{$ & {CMD_ENTRY_SIZE-1}} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
     .word _gosub
     .byte "gosub",0
+    .org {{$ & {CMD_ENTRY_SIZE-1}} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
+    .word _copy
+    .byte "copy",0
 _cmd_table_end:                 ; Keep me! Used to determine number of entries in table
 
 
@@ -715,26 +742,80 @@ _xr_data_loop:
 _xr_nak_jmp:                    ; Range extension
     jmp _xr_nak
 
-;;; Get char with timeout
-;;; X - number of XR_NT_LOAD cycles to wait
-_getc_to:    
-_gct_wait:
-    jsr _getc_nb                ; Nonblocking get char
-    bcc _gct_delay              ; No character, continue timeout countdown
-_gct_done:  
-    rts                         ; Got char, return
-_gct_delay:
-    dex
-    beq _gct_done
-    phx
-    ldy #XR_NT_LOAD
-    jsr _delay
-    plx
-    jmp _gct_wait
-
 _txt_xrecv_wait:
     .byte "Waiting",0
 
+
+;;; Perform a block copy of data
+_copy:
+    .as
+    .xl
+    sep #$20
+    rep #$10
+    pla                         ; Pull argc off the stack
+    cmp #3
+    bne _copy_expd_arg          ; If argc != 3, error
+    
+    lda #{buf >> 16} & $ff      ; Get buffer's DBR
+    pha                         ; Set program data bank to read off the input stack
+    plb
+    plx                         ; Remove the self-stack pointer
+    ;; At this point, the top of the stack is the pointer to the first arg
+    ldx #0
+_copy_args: 
+    stx copy_x
+    plx                         ; Get arg string pointer
+    pha                         ; Add space for the return value
+    phx
+    ldx #SYS.PARX               ; Convert the arg into an address
+    cop 0
+    plx                         ; Remove pointer from stack
+    bcc _copy_nothex            ; Not a valid address, error
+    ldx copy_x
+    tay
+    sty copy_s_l,x
+    pla                         ; Get high byte of return value
+    sta copy_s_l+2,x
+    inx
+    inx
+    inx
+    cpx #$9                     ; Parsed 3 args yet? (3 * (3 bytes each) == 9)
+    bcc _copy_args
+    lda copy_d_h                ; Get destination bank
+    xba
+    lda copy_s_h                ; Source bank
+    .al
+    rep #$20
+    pha
+    jsr _memcpy_init            ; Set up SMC
+    pla
+    ldx copy_s_l                ; Source address
+    ldy copy_d_l                ; Destination address
+    pei (copy_c_l)              ; Byte count
+    .as
+    sep #$20
+    jsr _memcpy
+    jmp monitor
+
+_copy_expd_arg:
+    pea _txt_copy_help
+    ldx #SYS.PUTS
+    cop 0
+    jmp monitor
+
+_copy_nothex:
+    pea 0                       ; These are not the same size, but then again, 
+    plb                         ; since the monitor resets the stack, it doesn't
+                                ; matter (and it makes things faster/smaller too)
+    pea _txt_copy_nx
+    ldx #SYS.PUTS
+    cop 0
+    jmp monitor
+
+_txt_copy_help:
+    .byte "Usage: copy ssssss dddddd cccc\n",0
+_txt_copy_nx:
+    .byte "Arguments must be valid hex addresses.\n",0
     
 ;;; ------------------------------------
 ;;;  UTILITY FUNCTIONS
@@ -752,6 +833,7 @@ _err:
 ;;;   NONE
 ;;; Return:
 ;;;   NONE
+    .as
 _putc:                          ; "echo" from older kernels
     pha
 _putc_loop: 
@@ -771,6 +853,7 @@ _putc_loop:
 ;;;   A
 ;;; Return:
 ;;;   A contains the received character
+    .as
 _getc:  
     lda >UART0_LSR              ; Check for Rx data (4)
     and #$01                    ; (2)
@@ -801,6 +884,33 @@ _getc_nb_cc:
     clc                         ; No character -> clear carry
     rts
 
+
+;;; Get char with timeout
+;;; Requirements:
+;;;   NONE
+;;; Args:
+;;;   X - number of GETC_LOAD cycles to wait (within some tolerance)
+;;; Uses:
+;;;   A, X
+;;; Return:
+;;;   A contains the received character, if available
+;;;   p.c = 1 if chararcter was available, 0 otherwise
+;;; 
+_getc_to:    
+_gct_wait:
+    jsr _getc_nb                ; Nonblocking get char
+    bcc _gct_delay              ; No character, continue timeout countdown
+_gct_done:  
+    rts                         ; Got char, return
+_gct_delay:
+    dex
+    beq _gct_done
+    phx
+    ldy #XR_NT_LOAD
+    jsr _delay
+    plx
+    jmp _gct_wait
+
     
 ;;; Delay for some amount of time
 ;;; Requirements:
@@ -826,6 +936,73 @@ _d_loop:
     plp
     rts
 
+
+;;; Memory Copy Initialization
+;;; Desc:
+;;;   Since the memcpy subroutine makes use of self-modifying code,
+;;;   the first time that memcpy is called, it must be loaded into
+;;;   RAM. (This must also happen if other SMC is called after the
+;;;   init process).
+;;; Requirements:
+;;;   NONE
+;;; Args:
+;;;   NONE
+;;; Uses:
+;;;   C, X, Y, DBR
+;;; Return:
+;;;   NONE
+_memcpy_init:
+    php
+    .al
+    .xl
+    rep #$30
+    ldx #_smc_memcpy            ; From addr
+    ldy #smc_base               ; To addr
+    lda #_smc_mc_eos - _smc_memcpy - 1
+    mvn 0,0
+    plp
+    rts
+
+    
+;;; Block copy memory (MVN)
+;;; Requirements:
+;;;   .as
+;;;   .xl (not strictly necessary, but why would you call with .xs?)
+;;;   _memcpy_init must have been called before _memcpy is called.
+;;;       If not called prior, this function's behavior is UNDEFINED!
+;;;   The source and destination regions must not overlap unless:
+;;;       (1) you know what you are doing, or
+;;;       (2) you like UNDEFINED behavior (it's actually defined but
+;;;           very likely not what you want)
+;;; Args:
+;;;   A - Source bank (8)
+;;;   B - Destination bank (8)
+;;;   X - Source bank address (16)
+;;;   Y - Destination bank address (16)
+;;;   (S) - Number of bytes to copy (16)
+;;; Uses:
+;;;   A, B, X, Y
+;;; Return:
+;;;   NONE
+_memcpy     .equ smc_base
+    .as
+    .xl
+_smc_memcpy:
+    sta |_smc_mc_mvn + 2 - _smc_memcpy ; Source bank (self-modifying code!)
+    xba
+    sta |_smc_mc_mvn + 1 - _smc_memcpy ; Destination bank
+    .al
+    rep #$20
+    lda 3,s                     ; Get byte count
+    dea                         ; MVN uses C+1 as the byte transfer count
+    phb                         ; Save data bank
+_smc_mc_mvn:
+    mvn 0,0                     ; Banks modified sta's above
+    .as
+    sep #$20
+    plb
+    rts
+_smc_mc_eos:                    ; END OF SUB - keep for _memcpy_init
 
     
 ;;; ------------------------------------
@@ -906,10 +1083,10 @@ _prhex:                     ; Prints a single hex digit in LSN of A
     and #$0f                    ; Get LSD
     ora #'0'                    ; Add "0"
     cmp #'9'+1                  ; Is it a decimal digit?
-    bcc _putc                   ; Yes! output it.
+    bcc _putc_jmp               ; Yes! output it.
     adc #$06                    ; No, convert it to ascii char for A-F
-    jsr _putc
-    rts
+_putc_jmp:  
+    jmp _putc
     
     
 ;;; Subroutine to print a byte in A in dec form (destructive)
@@ -1139,7 +1316,8 @@ _sys_ph_lval:
     xba
     lda s_px_l
     rti
-    
+
+
 
     
 ;;; ------------------------------------
