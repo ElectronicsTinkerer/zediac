@@ -21,7 +21,8 @@
     .rom ROM_SIZE
     .org ROM_BASE
 
-smc_base        .equ $0000
+smc_base0       .equ $0000
+smc_base1       .equ $0000
 ; stack_base    .equ $7e00      ; Really $7eff but for keeping things "page orientated" ...
 direct_page     .equ $7f00
 arg_stack       .equ $0         
@@ -97,8 +98,8 @@ copy_c_l        .def mon.tmp6   ; 8  bits
 copy_c_m        .def mon.tmp7   ; 8  bits
 copy_c_h        .def mon.tmp8   ; 8  bits (written to but unused)
 copy_x          .def mon.tmp9   ; 16 bits
+copy_mode       .def mon.tmp11  ; 8  bits
 
-    
 ;;; ------------------------------------
 ;;;  TEXT BANK
 ;;; ------------------------------------
@@ -159,6 +160,9 @@ _cmd_table:
     .org {{$ & {CMD_ENTRY_SIZE-1}} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
     .word _copy
     .byte "copy",0
+    .org {{$ & {CMD_ENTRY_SIZE-1}} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
+    .word _eeprom
+    .byte "ecopy",0
 _cmd_table_end:                 ; Keep me! Used to determine number of entries in table
 
 
@@ -746,8 +750,21 @@ _txt_xrecv_wait:
     .byte "Waiting",0
 
 
+;;; Perform a block copy of data from RAM to EEPROM
 ;;; Perform a block copy of data
+    .al
+    .xl
+_eeprom:
+    .as
+    sep #$20
+    lda #$80
+    sta copy_mode
+    bne _cp
 _copy:
+    .as
+    sep #$20
+    stz copy_mode
+_cp:
     .as
     .xl
     sep #$20
@@ -781,19 +798,25 @@ _copy_args:
     inx
     cpx #$9                     ; Parsed 3 args yet? (3 * (3 bytes each) == 9)
     bcc _copy_args
-    lda copy_d_h                ; Get destination bank
-    xba
-    lda copy_s_h                ; Source bank
+    bit copy_mode               ; If eeprom write, do some special stuff
+    bmi _cp_eep
+    
+    ;; Do some sanity checks on the user's input data
     .al
     rep #$20
-    pha
-    jsr _memcpy_init            ; Set up SMC
-    pla
-    ldx copy_s_l                ; Source address
     ldy copy_d_l                ; Destination address
+    cpy #ROM_BASE
+    bcs _copy_noeep             ; Can't copy to EEPROM
+
+    ;; Now actually use that data
+    jsr _memcpy_init            ; Set up SMC
+    ldx copy_s_l                ; Source address
     pei (copy_c_l)              ; Byte count
     .as
     sep #$20
+    lda copy_d_h                ; Get destination bank
+    xba
+    lda copy_s_h                ; Source bank
     jsr _memcpy
     jmp monitor
 
@@ -811,11 +834,84 @@ _copy_nothex:
     ldx #SYS.PUTS
     cop 0
     jmp monitor
+    
+_copy_noeep:
+    pea 0
+    plb
+    pea _txt_copy_ne
+    ldx #SYS.PUTS
+    cop 0
+    jmp monitor
+
+_cp_eep:
+    ;; Do some sanity checks on the user's input data
+    ldy copy_d_l                ; Destination address
+    cpy #ROM_BASE
+    bcc _copy_eep               ; Must copy to EEPROM
+    ldx copy_s_l                ; Source address
+    cpx #ROM_BASE
+    bcs _copy_feep              ; Can't copy from EEPROM
+    ldx copy_c_l                ; Byte count
+    beq _copy_eep_size          ; Can't copy 0 bytes
+    dex
+    bmi _copy_eep_size          ; Too large
+
+    ;; Move the EEPROM write routine into memory
+    .al
+    .xl
+    rep #$30
+    ldx #_smc_memcpy            ; From addr
+    ldy #_smc_cp                ; To addr
+    lda #_smc_cp_eep_eos - _smc_cp_eep - 1
+    mvn 0,0
+    jsr _smc_cp
+    jmp monitor
+
+_copy_eep:
+    pea 0
+    plb
+    pea _txt_copy_eep
+    ldx #SYS.PUTS
+    cop 0
+    jmp monitor
+
+_copy_feep:
+    pea 0
+    plb
+    pea _txt_copy_feep
+    ldx #SYS.PUTS
+    cop 0
+    jmp monitor
+
+_copy_eep_size:
+    pea 0
+    plb
+    pea _txt_copy_size
+    ldx #SYS.PUTS
+    cop 0
+    jmp monitor
 
 _txt_copy_help:
     .byte "Usage: copy ssssss dddddd cccc\n",0
 _txt_copy_nx:
     .byte "Arguments must be valid hex addresses.\n",0
+_txt_copy_ne:
+    .byte "Cannot `copy` to EEPROM. (Addr range $C000-$FFFF)\n",0
+_txt_copy_eep:
+    .byte "Destination must be EEPROM. (Addr range $C000-$FFFF)\n",0
+_txt_copy_feep:
+    .byte "Cannot ecopy from EEPROM to EEPROM. (Addr range $C000-$FFFF)\n",0
+_txt_copy_size:
+    .byte "Valid EEPROM copy count: [1..$8000]\n",0
+
+    
+_smc_cp         .equ smc_base1
+
+_smc_cp_eep:                    ; This is copied to RAM
+    ;; TODO!
+    ;;  Use DBR for source, [dp],Y for dest
+    ;; Need to correctly account for starting/ending on non-page boundaries
+_smc_cp_eep_eos:                ; END OF SUB - keep for SMC init
     
 ;;; ------------------------------------
 ;;;  UTILITY FUNCTIONS
@@ -957,7 +1053,7 @@ _memcpy_init:
     .xl
     rep #$30
     ldx #_smc_memcpy            ; From addr
-    ldy #smc_base               ; To addr
+    ldy #_memcpy                ; To addr
     lda #_smc_mc_eos - _smc_memcpy - 1
     mvn 0,0
     plp
@@ -984,7 +1080,7 @@ _memcpy_init:
 ;;;   A, B, X, Y
 ;;; Return:
 ;;;   NONE
-_memcpy     .equ smc_base
+_memcpy     .equ smc_base0
     .as
     .xl
 _smc_memcpy:
