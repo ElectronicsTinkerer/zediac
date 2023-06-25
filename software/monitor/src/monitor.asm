@@ -97,7 +97,7 @@ copy_d_h        .def mon.tmp5   ; 8  bits
 copy_c_l        .def mon.tmp6   ; 8  bits
 copy_c_m        .def mon.tmp7   ; 8  bits
 copy_c_h        .def mon.tmp8   ; 8  bits (written to but unused)
-copy_x          .def mon.tmp9   ; 16 bits
+copy_xy         .def mon.tmp9   ; 16 bits
 copy_mode       .def mon.tmp11  ; 8  bits
 
 ;;; ------------------------------------
@@ -248,10 +248,14 @@ _uart0_init_good:
 ;;; same bank as the monitor's input buffer since the parser
 ;;; simply replaces whitespace with a null terminator for each
 ;;; argument.
-monitor:    
+monitor:
+    sei                         ; Disable IRQs
     .xl
+    .al
+    rep #$30
+    lda #direct_page            ; Set direct page to just above stack
+    tcd
     .as
-    rep #$10
     sep #$20
     ldx #direct_page-1          ; Init stack (REQUIRED - many commands assume they can trash the stack!)
     txs
@@ -780,7 +784,7 @@ _cp:
     ;; At this point, the top of the stack is the pointer to the first arg
     ldx #0
 _copy_args: 
-    stx copy_x
+    stx copy_xy
     plx                         ; Get arg string pointer
     pha                         ; Add space for the return value
     phx
@@ -788,7 +792,7 @@ _copy_args:
     cop 0
     plx                         ; Remove pointer from stack
     bcc _copy_nothex            ; Not a valid address, error
-    ldx copy_x
+    ldx copy_xy
     tay
     sty copy_s_l,x
     pla                         ; Get high byte of return value
@@ -872,7 +876,7 @@ _cp_eep:
     .al
     .xl
     rep #$30
-    ldx #_smc_memcpy            ; From addr
+    ldx #_smc_cp_eep            ; From addr
     ldy #_smc_cp                ; To addr
     lda #_smc_cp_eep_eos - _smc_cp_eep - 1
     mvn 0,0
@@ -904,7 +908,7 @@ _txt_copy_ne:
 _txt_copy_eep:
     .byte "Destination must be EEPROM. (Addr range $C000-$FFFF)\n",0
 _txt_copy_feep:
-    .byte "Cannot ecopy from EEPROM to EEPROM. (Addr range $C000-$FFFF)\n",0
+    .byte "Cannot `ecopy` from EEPROM to EEPROM. (Addr range $C000-$FFFF)\n",0
 _txt_copy_size:
     .byte "Valid e/copy count: [1..$8000]\n",0
 
@@ -915,7 +919,69 @@ _smc_cp_eep:                    ; This is copied to RAM
     ;; TODO!
     ;;  Use DBR for source, [dp],Y for dest
     ;; Need to correctly account for starting/ending on non-page boundaries
+    .as
+    sep #$20
+    lda copy_d_l                ; Get low byte of dest address
+    and #$c0                    ; EEPROM page size = 64 bytes
+    xba
+    lda copy_d_l
+    xba
+    sta copy_d_l                ; Pointer now has lowest 6 bits reset
+    xba
+    .al
+    rep #$20
+    and #$3f                    ; EEPROM page size = 64 bytes
+    tay
+    sty copy_xy                 ; Need to save the page number for later
+    lda #$40
+    sec
+    sbc copy_xy                 ; Get reminaing byte count for this page
+    tax
+    dey
+    .as
+    sep #$20
+    bra _smc_cp_loop
+
+_smc_cp_nxtpg:  
+    ldx #$40                    ; EEPROM page size = 64 bytes
+_smc_cp_loop:
+    iny
+    lda [copy_s_l]
+    sta [copy_d_l],y
+    .al
+    rep #$20
+    dec copy_c_l
+    beq _smc_cp_write           ; All bytes have been copied
+    inc copy_s_l                ; Inc the src pointer
+    .as
+    sep #$20
+    bne $+4                     ; If need to carry to bank, do so
+    inc <copy_s_h
+    dex
+    bne _smc_cp_loop
+    ;; End of page
+_smc_cp_write:
+    .as
+    sep #$20
+    ;; Here's how we check for the EEPROM write status.
+    ;; Conveniently, if a read is performed during the internal write op,
+    ;; the complement of the last bit 7 is presented. We can then xor
+    ;; that value with last value written. If the result is negative, then
+    ;; bit 7 of the written value and the read value are complements of
+    ;; eachother. In this case, we check again. Once the result of the xor
+    ;; has bit 7 clear (positive number), then we know the EEPROM is done.
+    sta |_smc_cp_eor + 1 - _smc_cp_eep + _smc_cp
+_smc_cp_wait:                   ; Wait for EEPROM to complete write op
+    lda [copy_d_l],y
+_smc_cp_eor:    
+    eor #0                      ; Operand to be replaced
+    bmi _smc_cp_wait            ; Check bit 7 of the read data - if different, loop again
+    ldx copy_c_l                ; Get remaining byte count
+    dex
+    bpl _smc_cp_nxtpg           ; Do next page
+    rts
 _smc_cp_eep_eos:                ; END OF SUB - keep for SMC init
+
     
 ;;; ------------------------------------
 ;;;  UTILITY FUNCTIONS
@@ -1088,9 +1154,9 @@ _memcpy     .equ smc_base0
     .as
     .xl
 _smc_memcpy:
-    sta |_smc_mc_mvn + 2 - _smc_memcpy ; Source bank (self-modifying code!)
+    sta |_smc_mc_mvn + 2 - _smc_memcpy + _memcpy ; Source bank (self-modifying code!)
     xba
-    sta |_smc_mc_mvn + 1 - _smc_memcpy ; Destination bank
+    sta |_smc_mc_mvn + 1 - _smc_memcpy + _memcpy ; Destination bank
     .al
     rep #$20
     lda 3,s                     ; Get byte count
