@@ -798,10 +798,19 @@ _copy_args:
     inx
     cpx #$9                     ; Parsed 3 args yet? (3 * (3 bytes each) == 9)
     bcc _copy_args
+
+    ;; Do some sanity checks on the user's input data
+    ldx copy_c_l                ; Byte count
+    beq _copy_size              ; Can't copy 0 bytes
+    dex
+    bmi _copy_size              ; Too large
+    
     bit copy_mode               ; If eeprom write, do some special stuff
     bmi _cp_eep
     
-    ;; Do some sanity checks on the user's input data
+    jsr _memcpy_init            ; Set up SMC
+
+    ;; More sanity checks
     .al
     rep #$20
     ldy copy_d_l                ; Destination address
@@ -809,7 +818,6 @@ _copy_args:
     bcs _copy_noeep             ; Can't copy to EEPROM
 
     ;; Now actually use that data
-    jsr _memcpy_init            ; Set up SMC
     ldx copy_s_l                ; Source address
     pei (copy_c_l)              ; Byte count
     .as
@@ -820,13 +828,13 @@ _copy_args:
     jsr _memcpy
     jmp monitor
 
-_copy_expd_arg:
+_copy_expd_arg:                 ; Expected an argument
     pea _txt_copy_help
     ldx #SYS.PUTS
     cop 0
     jmp monitor
 
-_copy_nothex:
+_copy_nothex:                   ; Expected a hex val
     pea 0                       ; These are not the same size, but then again, 
     plb                         ; since the monitor resets the stack, it doesn't
                                 ; matter (and it makes things faster/smaller too)
@@ -835,10 +843,18 @@ _copy_nothex:
     cop 0
     jmp monitor
     
-_copy_noeep:
+_copy_noeep:                    ; Can't copy TO eeprom
     pea 0
     plb
     pea _txt_copy_ne
+    ldx #SYS.PUTS
+    cop 0
+    jmp monitor
+    
+_copy_size:                     ; Copy size out of range
+    pea 0
+    plb
+    pea _txt_copy_size
     ldx #SYS.PUTS
     cop 0
     jmp monitor
@@ -851,10 +867,6 @@ _cp_eep:
     ldx copy_s_l                ; Source address
     cpx #ROM_BASE
     bcs _copy_feep              ; Can't copy from EEPROM
-    ldx copy_c_l                ; Byte count
-    beq _copy_eep_size          ; Can't copy 0 bytes
-    dex
-    bmi _copy_eep_size          ; Too large
 
     ;; Move the EEPROM write routine into memory
     .al
@@ -867,7 +879,7 @@ _cp_eep:
     jsr _smc_cp
     jmp monitor
 
-_copy_eep:
+_copy_eep:                      ; Requires destination to be EEPROM
     pea 0
     plb
     pea _txt_copy_eep
@@ -875,18 +887,10 @@ _copy_eep:
     cop 0
     jmp monitor
 
-_copy_feep:
+_copy_feep:                     ; Can't copy from EEPROM to EEPROM
     pea 0
     plb
     pea _txt_copy_feep
-    ldx #SYS.PUTS
-    cop 0
-    jmp monitor
-
-_copy_eep_size:
-    pea 0
-    plb
-    pea _txt_copy_size
     ldx #SYS.PUTS
     cop 0
     jmp monitor
@@ -902,7 +906,7 @@ _txt_copy_eep:
 _txt_copy_feep:
     .byte "Cannot ecopy from EEPROM to EEPROM. (Addr range $C000-$FFFF)\n",0
 _txt_copy_size:
-    .byte "Valid EEPROM copy count: [1..$8000]\n",0
+    .byte "Valid e/copy count: [1..$8000]\n",0
 
     
 _smc_cp         .equ smc_base1

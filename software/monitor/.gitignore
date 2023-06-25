@@ -11,3 +11,6 @@ build
 
 # GDB
 .gdb_history
+
+# Sim
+.sim_history
