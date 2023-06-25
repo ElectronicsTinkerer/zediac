@@ -28,7 +28,9 @@ direct_page     .equ $7f00
 arg_stack       .equ $0         
 buf             .equ $010000    ; Input line buffer
 xrecv_buf       .equ $020000    ; XMODEM receive / send buffer base
+xmon_ascii_line .equ 0          ; ASCII temp storage for hex monitor
 
+    
 GETC_LOAD       .def 50_000     ; Clock cycles
     
 ;;; ------------------------------------
@@ -42,7 +44,15 @@ enum define syscall {
     tmp4,
     tmp5,
     tmp6,
-    tmp7
+    tmp7,
+    tmp8,
+    tmp9,
+    tmp10,
+    tmp11,
+    tmp12,
+    tmp13,
+    tmp14,
+    tmp15
 }
     
 enum define mon {
@@ -61,7 +71,23 @@ enum define mon {
     tmp12,
     tmp13,
     tmp14,
-    tmp15
+    tmp15,
+    tmp16,
+    tmp17,
+    tmp18,
+    tmp19,
+    tmp20,
+    tmp21,
+    tmp22,
+    tmp23,
+    tmp24,
+    tmp25,
+    tmp26,
+    tmp27,
+    tmp28,
+    tmp29,
+    tmp30,
+    tmp31
 }
 
 s_px_l          .def syscall.tmp0
@@ -69,11 +95,21 @@ s_px_m          .def syscall.tmp1
 s_px_h          .def syscall.tmp2
     
     
-xsav            .def mon.tmp0
-ysav            .def mon.tmp2
-arg_sp          .def mon.tmp4
-line_start      .def mon.tmp6
-wspc_skip       .def mon.tmp8
+xsav            .def mon.tmp0   ; 16 bits
+ysav            .def mon.tmp2   ; 16 bits
+arg_sp          .def mon.tmp4   ; 16 bits
+line_start      .def mon.tmp6   ; 16 bits
+wspc_skip       .def mon.tmp8   ; 8  bits
+xmon_mode       .def mon.tmp9   ; 8  bits
+xmon_l          .def mon.tmp10  ; 8  bits
+xmon_m          .def mon.tmp11  ; 8  bits
+xmon_h          .def mon.tmp12  ; 8  bits
+xmon_stl        .def mon.tmp13  ; 8  bits
+xmon_stm        .def mon.tmp14  ; 8  bits
+xmon_sth        .def mon.tmp15  ; 8  bits
+xmon_xaml       .def mon.tmp4   ; 8  bits
+xmon_xamm       .def mon.tmp5   ; 8  bits
+xmon_xamh       .def mon.tmp6   ; 8  bits
 
 gs_addr_l       .def mon.tmp0
 gs_addr_m       .def mon.tmp1
@@ -100,6 +136,7 @@ copy_c_h        .def mon.tmp8   ; 8  bits (written to but unused)
 copy_xy         .def mon.tmp9   ; 16 bits
 copy_mode       .def mon.tmp11  ; 8  bits
 
+
 ;;; ------------------------------------
 ;;;  TEXT BANK
 ;;; ------------------------------------
@@ -113,6 +150,10 @@ _txt_clr_scrn:
     .byte "^[[2J^[[H",0         ; Clear screen and home cursor to (0,0)
 _txt_backspace:
     .byte "\b^[[K",0            ; Back up one char then delete at cursor
+_txt_dim:
+    .byte "^[[2m",0             ; Set text to dim
+_txt_reset:
+    .byte "^[[0m",0             ; Reset text mode to default
 _txt_unk_cmd:
     .byte "Command not found.\n",0
 _txt_help:
@@ -120,9 +161,19 @@ _txt_help:
     .byte " > args [arg1] [...]        Print stack info for passed arguments\n"
     .byte " > clear                    Clear the terminal\n"
     .byte " > copy ssssss dddddd cccc  Copy c bytes from s to d\n"
+    .byte " > ecopy ssssss dddddd cccc Copy c bytes from s to d (EEPROM)\n"
     .byte " > go xxxxxx                JML to an address\n"
     .byte " > gosub xxxxxx             JSL to an address (RTL to MONITOR)\n"
     .byte " > help                     Display available commands\n"
+    .byte " > a.b                      Hexdump from a to b\n"
+    .byte " > a:b [c] [...]            Store b at address a\n"
+    .byte 0
+_txt_startup:
+    .byte "^[[2J^[[H" // Clear screen
+    .byte "******* ZEDIA COMPUTER SYSTEM *******\n"
+    .byte "*        SYSTEM MONITOR V1.0        *\n"
+    .byte "*     (C) Ray Clemens  2023     *\n"
+    .byte "*************************************\n"
     .byte 0
 
     
@@ -224,8 +275,8 @@ _uart0_init_good:
     stx UART0_LCR               ; Restore line settings
     ;; END: UART0 INIT
 
-    ;; Clear screen
-    pea _txt_clr_scrn           ; Display prompt
+    ;; Startup banner
+    pea _txt_startup
     ldx #SYS.PUTS
     cop 0
     plx                         ; Restore stack
@@ -459,14 +510,254 @@ _me_eoc_chk_nxt:
     bcs _me_cmd_invalid
     jmp _me_loop_init
 
-_me_cmd_invalid:    
+_me_cmd_invalid:
+    ;; Maybe it's a low-level monitor command
+;;; HEX Monitor
+_xmon:   
+    .as
+    .xl
+    sep #$20
+    rep #$10
+    
+    ; Line terminated, now parse it
+    ldx #-1                     ; Reset text index
+    lda #0                      ; Default to XAM mode
+    jmp _xmon_setmode
+
+_xmon_exit:
+    ;; Print a newline
+    pea _txt_eol
+    ldx #SYS.PUTS
+    cop 0
+    plx                         ; Restore stack
+    jmp monitor
+    
+_xmon_setblkxam:
+    lda #$40                    ; Block XAM
+_xmon_setmode:
+    asl
+    sta xmon_mode
+_xmon_blskip:
+    inx                         ; Advance text index
+    cpx xsav                    ; Done with line?
+    bcc _xmon_nextitem
+    jmp _xmon_exit
+_xmon_nextitem:
+    lda >buf,x                  ; Get character
+    cmp #'.'                    ; Delimiter is anything < '.'
+    bcc _xmon_blskip            ; Skip it
+    beq _xmon_setblkxam         ; If '.' then set to Block XAM mode
+    cmp #':'                    ; If ':' set STOR mode
+    beq _xmon_setmode
+    cmp #'?'                    ; Help?
+    beq _xmon_help
+    ;; and #$5f                 ; Make uppercase
+    stz xmon_l                  ; Clear hex value
+    stz xmon_m
+    stz xmon_h
+    stx ysav                    ; Save x for later (used for index comparison)
+    
+    ;; Attempt to parse a hex value
+_xmon_nexthex:
+    lda >buf,x                  ; Get character
+    eor #$30                    ; Maps digits to 0-9
+    cmp #9+1                    ; Is this a decimal digit?
+    bcc _xmon_dig               ; Yes
+    and #$5f                    ; Ignore case
+    adc #$a8                    ; Map to $FA-$FF
+    cmp #$fa                    ; Is this a hex character?
+    bcc _xmon_nothex            ; No
+
+_xmon_dig:
+    asl                         ; Move hex digit to MSB of A
+    asl                     
+    asl
+    asl
+    
+    ldy #$04                    ; Shift count (# of bits in a hex char)
+_xmon_hexshift:
+    asl                         ; Shift digit left, moving bit into Carry
+    rol xmon_l                  ; Rotate into hex storage location
+    rol xmon_m
+    rol xmon_h
+    dey                         ; Done 4 shifts?
+    bne _xmon_hexshift          ; No, do another
+    inx                         ; Advance text index
+    bpl _xmon_nexthex           ; Next character
+    jmp _xmon_exit              ; End of text buffer, quit
+
+_xmon_bad_cmd:   
     ;; Not a valid command, output an error
     pea _txt_unk_cmd            ; Text string
     ldx #SYS.PUTS
     cop 0
     plx                         ; Restore stack
-    jmp _mon_prompt
+    jmp monitor
     
+_xmon_nothex:
+    cpx ysav                    ; Was at least 1 hex char given?
+    beq _xmon_bad_cmd           ; No, clear line and start over
+
+    bit xmon_mode               ; Check what mode we are in
+    bvc _xmon_notstor           ; B6: 0 = STOR, 1 = XAM
+
+    ;; Fallthrough for STOR mode, store
+    lda xmon_l                  ; Get LSB of hex data
+    sta [xmon_stl]              ; Store data Long
+    inc xmon_stl                ; Inc the store pointer
+    bne _xmon_nextitem
+    inc xmon_stm
+    bne _xmon_nextitem
+    inc xmon_sth
+_xmon_tonextitem:
+    jmp _xmon_nextitem
+
+_xmon_help:
+    jmp _help
+    
+_xmon_notstor:
+    stx ysav
+    bpl _xmon_xam               ; B7 = 0 for XAM, 1 for Block XAM
+    lda xmon_l                  ; Ensure that block XAM ends with address xxxf
+    ora #$0f
+    sta xmon_l
+    lda xmon_xaml               ; If the ending address is the same as the
+    cmp xmon_l                  ; current XAM address, don't do anything
+    lda xmon_xamm
+    sbc xmon_m
+    lda xmon_xamh
+    sbc xmon_h
+    beq _xmon_tnij
+_xmon_xn:   
+    jmp _xmon_xamnext
+_xmon_tnij:
+    jmp _xmon_tonextitem_jmp
+
+    ;; Now in XAM mode
+_xmon_xam:  
+    ldx #$03                    ; Copy 3 bytes
+_xmon_setadr:
+    lda <xmon_l-1,x             ; Copy hex data into
+    sta <xmon_stl-1,x           ; the STORE POINTER
+    sta <xmon_xaml-1,x          ; and to the XAM POINTER
+    dex
+    bne _xmon_setadr            ; Copy all 3 bytes
+    stz |xmon_ascii_line+16     ; 16 = # of ASCII chars per line
+
+    and #$f0                    ; Make rows always start with a multiple of 16
+    sta <xmon_xaml,x
+    lda xmon_l                  ; Ensure that (any) XAM ends with address xxxf
+    ora #$0f
+    sta xmon_l
+
+    ldy #15                     ; Size of ascii buffer-1
+    lda #' '
+_xmon_zero_ascii:
+    sta xmon_ascii_line,y       ; Clear ascii line
+    dey
+    bpl _xmon_zero_ascii
+    bra _xmon_nexprint_line
+
+    ;; Print address and data from this address
+_xmon_nxtprint:
+    bne _xmon_prdata            ; != 0 => no address to print
+
+_xmon_nexprint_line:
+    pea _txt_eol                ; New line
+    ldx #SYS.PUTS
+    cop 0
+    plx
+    jsr _getc_nb                ; Check for input characters
+    bcc _xmon_nxtprintadr       ; None, keep going
+    cmp #KEY_CTRL_C             ; Ctrl+C?
+    bne _xmon_nxtprintadr       ; No.
+    jmp _xmon_exit                 ; Yes, break
+_xmon_nxtprintadr:
+    pea _txt_dim                ; Dim the addresses
+    ldx #SYS.PUTS
+    cop 0
+    plx
+    lda xmon_xamh               ; Output high byte of address
+    ldx #SYS.PH
+    cop 0
+    lda xmon_xamm               ; Middle byte
+    ldx #SYS.PH
+    cop 0
+    lda xmon_xaml               ; Low byte
+    ldx #SYS.PH
+    cop 0
+    lda #':'
+    jsr _putc
+    pea _txt_reset              ; Restore normal text
+    ldx #SYS.PUTS
+    cop 0
+    plx
+
+_xmon_prdata:
+    lda #' '                    ; Delimiter
+    jsr _putc
+    lda [xmon_xaml]             ; Get data from mem
+    pha                     
+    ldx #SYS.PH                 ; Print hex value
+    cop 0
+    lda #$00                    ; Clear B accumulator
+    xba
+    lda xmon_xaml               ; Get the current line byte index
+    and #$0f
+    tay                         ; For indexing into the ASCII string holding reg
+    cmp #$07                    ; If this is the 8th byte printed, put a space in the middle
+    bne _xmon_prdata_isprint    ; to make it easier to read large blocks
+    lda #' '
+    jsr _putc
+_xmon_prdata_isprint:   
+    pla
+    cmp #' '                    ; Unprintable character? (A < ' ')
+    bcc _xmon_prdata_ascii_d    ; Yes, print '.'
+    cmp #$7f                    ; Unprintable character?
+    bcc _xmon_prdata_ascii      ; Yes (A >= DEL(0x7f))
+_xmon_prdata_ascii_d:
+    lda #'.'
+_xmon_prdata_ascii:
+    sta xmon_ascii_line,y       ; Store into string
+
+_xmon_xamnext:
+    lda xmon_xaml               ; Check if there is more to print
+    cmp xmon_l
+    lda xmon_xamm
+    sbc xmon_m
+    lda xmon_xamh
+    sbc xmon_h
+    bcs _xmon_tonextitem_ascii  ; Not less, output more data
+
+    inc xmon_xaml               ; Next address, update pointer
+    bne _xmon_mod16chk
+    inc xmon_xamm
+    bne _xmon_mod16chk
+    inc xmon_xamh
+
+_xmon_mod16chk:
+    lda xmon_xaml               ; If address MOD 16 == 0, start new line
+    and #$0f
+    jmp _xmon_nxtprint
+
+_xmon_tonextitem_ascii:         ; Check for end of line, if so, print line's ASCII
+    lda xmon_xaml               ; Check for EOL (Address MOD 16 == 0)
+    and #$0f
+    cmp #$0f
+    bne _xmon_tonextitem_jmp
+    ;; Print ASCII text next to HEX
+    lda #' '                    ; Delimiter
+    jsr _putc
+    jsr _putc
+    pea xmon_ascii_line         ; Print ASCII values
+    ldx #SYS.PUTS
+    cop 0
+    plx
+_xmon_tonextitem_jmp:           ; Range extension
+    stz xmon_mode               ; Switch to XAM mode
+    ldx ysav                    ; Restore parse index
+    jmp _xmon_nextitem
+
     
 ;;; ------------------------------------
 ;;;  COMMANDS
