@@ -2,12 +2,18 @@ TODO!
 
 * Add XMODEM file transfer commands (xrecv)
 * Add XMODEM file transfer commands (xsend)
-* Add block copy command
-* Add EEPROM write command
+* Add x commands to help menu
 * Revamp build system
+* print index across top of hex dump
+* ^C on line does not print newline
+
 
 TODONE!
 
 * DBR issues with stack argv?
 * Make backspace accept the other backspace char
 * Fix backspace graphical issues
+* Add block copy command
+* Add EEPROM write command
+* block xam ASCII printout not always appears
+
