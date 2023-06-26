@@ -5,7 +5,6 @@ TODO!
 * Add x commands to help menu
 * Revamp build system
 * print index across top of hex dump
-* ^C on line does not print newline
 
 
 TODONE!
@@ -16,4 +15,5 @@ TODONE!
 * Add block copy command
 * Add EEPROM write command
 * block xam ASCII printout not always appears
+* ^C on line does not print newline
 

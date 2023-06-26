@@ -141,7 +141,7 @@ copy_mode       .def mon.tmp11  ; 8  bits
 ;;;  TEXT BANK
 ;;; ------------------------------------
 _txt_prompt:
-    .byte "[ ^[[32mZEDIAC^[[0m ] > ",0
+    .byte "\n[ ^[[32mZEDIAC^[[0m ] > ",0
 _txt_eol:
     .byte "\n", 0               ; End of line
 _txt_eol_reset:
@@ -299,6 +299,15 @@ _uart0_init_good:
 ;;; same bank as the monitor's input buffer since the parser
 ;;; simply replaces whitespace with a null terminator for each
 ;;; argument.
+;;;
+;;; The length of the input buffer which is filled is passed via
+;;; the Y register (.xl)
+;;;
+;;; Once all commands in the above command table have been compared
+;;; and no match has been found, then the input line is parsed by
+;;; the "xmon" (hexmonitor), which (as always with my projects) is a
+;;; modified version of the Woz Monitor from the Apple 1.
+;;; 
 monitor:
     sei                         ; Disable IRQs
     .xl
@@ -323,8 +332,8 @@ _mon_prompt:
     
 _mon_next:  
     jsr _getc                   ; Get a charcter (blocking)
-    cmp #03                     ; ^C?
-    beq _mon_prompt             ; Yes, reset line
+    cmp #KEY_CTRL_C             ; ^C?
+    beq monitor                 ; Yes, reset line
     cmp #KEY_LF                 ; Enter? (LF)
     beq _mon_exec               ; Yes, run the command
     cmp #KEY_CR                 ; Enter? (CR)
@@ -362,14 +371,6 @@ _mon_backspace:
 
     ;; Run a command in the buffer
 _mon_exec:
-    phx
-    ;; Print a newline
-    pea _txt_eol
-    ldx #SYS.PUTS
-    cop 0
-    plx                         ; Restore stack
-
-    plx
     cpx #0                      ; Ignore lines with no content
     beq _mon_prompt
     stx xsav                    ; Save X for later comparison
@@ -377,6 +378,12 @@ _mon_exec:
     lda #0                      ; Null terminate input (used for argument passing)
     sta buf,x
 
+    ;; Print a newline
+    pea _txt_eol
+    ldx #SYS.PUTS
+    cop 0
+    plx                         ; Restore stack
+    
     ;; Remove any whitespace from the front of the command
     ldx #-1
 _me_rm_wspc:
@@ -493,6 +500,7 @@ _me_run_cmd:
     lda ysav                    ; Restore command table index
     and #{$ffff-{CMD_ENTRY_SIZE-1}} ; Mask off lowest bits (indicating index into the current entry)      
     tax                         ; X now has the base address of the entry (which is a pointer)
+    ldy xsav                    ; Y now contains the line length
     jmp (_cmd_table,x)          ; Execute command
 
 _me_eoc_chk_nxt:
@@ -525,11 +533,6 @@ _xmon:
     jmp _xmon_setmode
 
 _xmon_exit:
-    ;; Print a newline
-    pea _txt_eol
-    ldx #SYS.PUTS
-    cop 0
-    plx                         ; Restore stack
     jmp monitor
     
 _xmon_setblkxam:
@@ -540,8 +543,7 @@ _xmon_setmode:
 _xmon_blskip:
     inx                         ; Advance text index
     cpx xsav                    ; Done with line?
-    bcc _xmon_nextitem
-    jmp _xmon_exit
+    bcs _xmon_exit
 _xmon_nextitem:
     lda >buf,x                  ; Get character
     cmp #'.'                    ; Delimiter is anything < '.'
