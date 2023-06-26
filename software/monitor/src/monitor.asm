@@ -629,7 +629,7 @@ _xmon_notstor:
     sbc xmon_h
     beq _xmon_tnij
 _xmon_xn:   
-    jmp _xmon_xamnext
+    jmp _xmon_nexprint_line
 _xmon_tnij:
     jmp _xmon_tonextitem_jmp
 
@@ -656,17 +656,41 @@ _xmon_zero_ascii:
     sta xmon_ascii_line,y       ; Clear ascii line
     dey
     bpl _xmon_zero_ascii
+
+    pea _txt_eol                ; New line
+    ldx #SYS.PUTS
+    cop 0
+    plx
     bra _xmon_nexprint_line
 
     ;; Print address and data from this address
 _xmon_nxtprint:
     bne _xmon_prdata            ; != 0 => no address to print
+    
+    ;; Print ASCII text next to HEX
+    lda #' '                    ; Delimiter
+    jsr _putc
+    jsr _putc
+    pea xmon_ascii_line         ; Print ASCII values
+    ldx #SYS.PUTS
+    cop 0
+    plx
 
-_xmon_nexprint_line:
     pea _txt_eol                ; New line
     ldx #SYS.PUTS
     cop 0
     plx
+
+    lda xmon_xaml               ; Check if there is more to print
+    cmp xmon_l
+    lda xmon_xamm
+    sbc xmon_m
+    lda xmon_xamh
+    sbc xmon_h
+    bcs _xmon_tonextitem_jmp    ; If we're past the end address,
+                                ; return to parse the rest of the line 
+
+_xmon_nexprint_line:
     jsr _getc_nb                ; Check for input characters
     bcc _xmon_nxtprintadr       ; None, keep going
     cmp #KEY_CTRL_C             ; Ctrl+C?
@@ -721,14 +745,6 @@ _xmon_prdata_ascii:
     sta xmon_ascii_line,y       ; Store into string
 
 _xmon_xamnext:
-    lda xmon_xaml               ; Check if there is more to print
-    cmp xmon_l
-    lda xmon_xamm
-    sbc xmon_m
-    lda xmon_xamh
-    sbc xmon_h
-    bcs _xmon_tonextitem_ascii  ; Not less, output more data
-
     inc xmon_xaml               ; Next address, update pointer
     bne _xmon_mod16chk
     inc xmon_xamm
@@ -740,19 +756,6 @@ _xmon_mod16chk:
     and #$0f
     jmp _xmon_nxtprint
 
-_xmon_tonextitem_ascii:         ; Check for end of line, if so, print line's ASCII
-    lda xmon_xaml               ; Check for EOL (Address MOD 16 == 0)
-    and #$0f
-    cmp #$0f
-    bne _xmon_tonextitem_jmp
-    ;; Print ASCII text next to HEX
-    lda #' '                    ; Delimiter
-    jsr _putc
-    jsr _putc
-    pea xmon_ascii_line         ; Print ASCII values
-    ldx #SYS.PUTS
-    cop 0
-    plx
 _xmon_tonextitem_jmp:           ; Range extension
     stz xmon_mode               ; Switch to XAM mode
     ldx ysav                    ; Restore parse index
