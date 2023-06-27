@@ -866,9 +866,9 @@ _gs:
     bmi _gs_jml
     ;; Simulate a jsl [gs_addr_l]
     phk
-    pea _gs_jml+3
+    pea _gs_jml+2
 _gs_jml:    
-    jmp [gs_addr_l]
+    jmp [gs_addr_l + direct_page]
     jmp monitor                 ; Used for the jsl case
 
 _gs_expd_arg:
