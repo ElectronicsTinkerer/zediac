@@ -146,14 +146,14 @@ _txt_eol:
     .byte "\n", 0               ; End of line
 _txt_eol_reset:
     .byte "^[[0m\n",0           ; Reset style to term default
+_txt_reset:
+    .byte "^[[0m",0             ; Reset text mode to default
+_txt_dim:
+    .byte "^[[2m",0             ; Set text to dim
 _txt_clr_scrn:
     .byte "^[[2J^[[H",0         ; Clear screen and home cursor to (0,0)
 _txt_backspace:
     .byte "\b^[[K",0            ; Back up one char then delete at cursor
-_txt_dim:
-    .byte "^[[2m",0             ; Set text to dim
-_txt_reset:
-    .byte "^[[0m",0             ; Reset text mode to default
 _txt_unk_cmd:
     .byte "Command not found.\n",0
 _txt_help:
@@ -636,7 +636,40 @@ _xmon_tnij:
     jmp _xmon_tonextitem_jmp
 
     ;; Now in XAM mode
-_xmon_xam:  
+_xmon_xam:
+    ;; Print the line index numbers
+    ldx #7                      ; Print a few spaces
+    lda #' '
+_xmon_lin_indent:
+    jsr _putc
+    dex
+    bne _xmon_lin_indent
+    
+    pea _txt_dim                ; Dim the addresses
+    ldx #SYS.PUTS
+    cop 0
+    plx
+    
+    ldy #0
+_xmon_lin_loop:
+    lda #' '
+    jsr _putc
+    cpy #8                      ; Add spacer between 8th and 9th columns
+    bne $+5
+    jsr _putc
+    tya
+    ldx #SYS.PH                 ; Print the number
+    cop 0
+    iny
+    cpy #16
+    bcc _xmon_lin_loop
+
+    pea _txt_reset              ; Restore normal text
+    ldx #SYS.PUTS
+    cop 0
+    plx
+    
+    ;; Set up the memory data pointers
     ldx #$03                    ; Copy 3 bytes
 _xmon_setadr:
     lda <xmon_l-1,x             ; Copy hex data into
