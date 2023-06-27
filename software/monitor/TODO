@@ -4,7 +4,6 @@ TODO!
 * Add XMODEM file transfer commands (xsend)
 * Add x commands to help menu
 * Revamp build system
-* print index across top of hex dump
 
 
 TODONE!
@@ -16,4 +15,5 @@ TODONE!
 * Add EEPROM write command
 * block xam ASCII printout not always appears
 * ^C on line does not print newline
+* print index across top of hex dump
 
