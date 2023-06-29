@@ -1,9 +1,9 @@
 TODO!
 
-* Add XMODEM file transfer commands (xrecv)
 * Add XMODEM file transfer commands (xsend)
 * Add x commands to help menu
 * Revamp build system
+* 0.ffffff only prints 0.f
 
 
 TODONE!
@@ -16,4 +16,5 @@ TODONE!
 * block xam ASCII printout not always appears
 * ^C on line does not print newline
 * print index across top of hex dump
+* Add XMODEM file transfer commands (xrecv)
 
