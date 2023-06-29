@@ -120,9 +120,10 @@ gs_mode         .def mon.tmp4
 args_y          .def mon.tmp0
 args_end        .def mon.tmp2
 
-xr_blk          .def mon.tmp0   ; 16 bits
-xr_blkptr       .def mon.tmp2   ; 24 bits!
-xr_chksum       .def mon.tmp5   ; 8  bits
+xr_blk          .def mon.tmp0   ; 8  bits
+xr_blkptr       .def mon.tmp1   ; 24 bits!
+xr_chksum       .def mon.tmp4   ; 8  bits
+xr_isnext       .def mon.tmp5   ; 8  bits
 
 copy_s_l        .def mon.tmp0   ; 8  bits
 copy_s_m        .def mon.tmp1   ; 8  bits
@@ -165,13 +166,14 @@ _txt_help:
     .byte " > go xxxxxx                JML to an address\n"
     .byte " > gosub xxxxxx             JSL to an address (RTL to MONITOR)\n"
     .byte " > help                     Display available commands\n"
+    .byte " > xrecv                    XMODEM receive to address $020000\n"
     .byte " > a.b                      Hexdump from a to b\n"
     .byte " > a:b [c] [...]            Store b at address a\n"
     .byte 0
 _txt_startup:
     .byte "^[[2J^[[H" // Clear screen
     .byte "******* ZEDIA COMPUTER SYSTEM *******\n"
-    .byte "*        SYSTEM MONITOR V1.0        *\n"
+    .byte "*        SYSTEM MONITOR V1.3        *\n"
     .byte "*     (C) Ray Clemens  2023     *\n"
     .byte "*************************************\n"
     .byte 0
@@ -971,35 +973,49 @@ _xrecv:
     cop 0
     plx
 
-_xr_wait_timeout:
-    stz xr_blk
-    ;; lda #KEY_NAK                ; Send NAK
-    ;; jsr _putc
-    ;; ;; lda #'.'
-    ;; ;; jsr _putc
-    ;; ldx #XR_NT_COUNT            ; Initialize count timeout
-    ;; jsr _getc_to                ; Timeout getc
-    ;; bcc _xr_wait_timeout
-    ;; cmp #KEY_SOH
-    ;; bne _xr_wait_timeout        ; If the main timeout is exhausted, resend NAK
-    ;; ;; Received start, init block number
-    ;; jmp _xr_soh
-
-_xr_nak:    
+_xr_wt_nak: 
+    ;;  "PURGE" (flush) the input buffer
+    ldx #XR_NT_COUNT            ; Initialize count timeout
+    jsr _getc_to                ; Timeout getc
+    bcs _xr_wait_timeout        ; Got char, keep reading to empty Rx buf
+    ;; Now send the NAK and wait for SOH
     lda #KEY_NAK                ; Send NAK
     jsr _putc
-    ;; lda #'.'
-    ;; jsr _putc
+_xr_wait_timeout:
+    ldx #XR_NT_COUNT            ; Initialize count timeout
+    jsr _getc_to                ; Timeout getc
+    bcc _xr_wait_timeout
+    cmp #KEY_CTRL_C             ; Cancel
+    beq _xr_done
+    cmp #KEY_SOH
+    bne _xr_wt_nak              ; If the main timeout is exhausted, resend NAK
+    ;; Received start, init block number
+    stz xr_blk                  ; Set up block number (actually starts at 1
+                                ; but by having this as 0, the block incrementer
+                                ; logic will inc the block the first time)
+    ldy #xrecv_buf >> 8         ; Initialize data receive pointer
+    sty xr_blkptr+1
+    lda #xrecv_buf & $ff
+    sta xr_blkptr
+    jmp _xr_soh
+
+_xr_nak:
+    ;;  "PURGE" (flush) the input buffer
+    ldx #XR_BT_COUNT            ; Initialize count timeout
+    jsr _getc_to                ; Timeout getc
+    bcs _xr_nak                 ; Got char, keep reading to empty Rx buf
+    lda #KEY_NAK                ; Send NAK now that everything has been read in
+    jsr _putc
 _xr_wait_for_soh:
     ldx #XR_BT_COUNT            ; Initialize count timeout
     jsr _getc_to                ; Timeout getc
-    bcc _xr_nak                 ; No char, timeout occured
+    bcc _xr_wait_for_soh        ; No char, timeout occured
     cmp #KEY_SOH
     beq _xr_soh                 ; Handle new block
     cmp #KEY_CTRL_C             ; Cancel
     beq _xr_done
     cmp #KEY_CTRL_R             ; Restart
-    beq _xr_wait_timeout
+    beq _xrecv
     cmp #KEY_EOT
     bne _xr_nak
     lda #KEY_ACK                ; ACK EOT
@@ -1019,13 +1035,15 @@ _xr_soh:
     bcc _xr_nak                 ; No char, timeout occured
     cmp xr_blk
     bcc _xr_can                 ; Invalid block number
+    stz xr_isnext               ; Say that this block is NOT a new number
     beq _xr_inv_blkno           ; If current no == received, don't inc the block number
     dea
     cmp xr_blk                  ; Is this the next block?
     bne _xr_can                 ; Invalid block number, CAN
     ;; Yes, this is the next block
+    inc xr_isnext               ; Is a new block number = 1
     inc xr_blk
-    ;; bmi  ;??? What to do if too long?
+    bmi _xr_can                 ; If too long, cancel
 _xr_inv_blkno:  
     ;; Get inverted block number
     ldx #XR_BT_COUNT            ; Initialize count timeout
@@ -1036,37 +1054,20 @@ _xr_inv_blkno:
     bne _xr_can                 ; Invalid block number
 
     ;;  Now, we're getting data
-    ldy #xrecv_buf >> 8
-    sty xr_blkptr+1
-    lda #xrecv_buf & $ff
-    sta xr_blkptr
+    stz xr_chksum
     ldy #0
     cld
 _xr_data_loop:
-    phy
     ldx #XR_BT_COUNT            ; Initialize count timeout
     jsr _getc_to                ; Timeout getc
-    ply
     bcc _xr_nak                 ; No char, timeout occured
     sta [xr_blkptr],y
     clc
     adc xr_chksum
     sta xr_chksum
     iny
-    tya
-    bpl _xr_data_loop           ; If we have not received 128 bytes, keep going
-
-    ;; TODO: What if this is a repeat block?
-    .al                         ; Set block pointer to next region
-    rep #$20
-    clc
-    and #$00ff
-    adc xr_blkptr
-    sta xr_blkptr
-    .as
-    sep #$20
-    adc xr_blkptr+2
-    sta xr_blkptr
+    cpy #$80
+    bcc _xr_data_loop           ; If we have not received 128 bytes, keep going
     
     ;; Now check checksum
     ldx #XR_BT_COUNT            ; Initialize count timeout
@@ -1074,7 +1075,24 @@ _xr_data_loop:
     bcc _xr_nak_jmp             ; No char, timeout occured
     cmp xr_chksum
     bne _xr_nak_jmp             ; Checksum failed, NAK
-    jmp _xr_soh                 ; Success! Wait for EOT
+    ;; Success! Update the 128-byte block pointer
+    lda #KEY_ACK
+    jsr _putc
+
+    lda xr_isnext               ; Is this a repeat block?
+    beq _xr_wfs_jmp             ; Yes, don't change block num
+    .al                         ; Set block pointer to next region
+    rep #$20
+    tya
+    clc
+    adc xr_blkptr
+    sta xr_blkptr
+    .as
+    sep #$20
+    bcc _xr_wfs_jmp
+    inc xr_blkptr+2
+_xr_wfs_jmp:
+    jmp _xr_wait_for_soh        ; Wait for next block or EOH
     
 _xr_nak_jmp:                    ; Range extension
     jmp _xr_nak
