@@ -4,6 +4,7 @@ TODO!
 * Add x commands to help menu
 * Revamp build system
 * 0.ffffff only prints 0.f
+* Move ASCII buffer for block XAM to ZP region so address 0 is free'd up for users
 
 
 TODONE!
