@@ -28,7 +28,6 @@ direct_page     .equ $7f00
 arg_stack       .equ $0         
 buf             .equ $010000    ; Input line buffer
 xrecv_buf       .equ $020000    ; XMODEM receive / send buffer base
-xmon_ascii_line .equ 0          ; ASCII temp storage for hex monitor
 
     
 GETC_LOAD       .def 50_000     ; Clock cycles
@@ -36,8 +35,10 @@ GETC_LOAD       .def 50_000     ; Clock cycles
 ;;; ------------------------------------
 ;;;  DIRECT PAGE VARIABLES
 ;;; ------------------------------------
+xmon_ascii_line .def 0          ; ASCII temp storage for hex monitor
+
 enum define syscall {
-    tmp0 = $0,
+    tmp0 = $10,
     tmp1,
     tmp2,
     tmp3,
@@ -56,7 +57,7 @@ enum define syscall {
 }
     
 enum define mon {
-    tmp0 = $10,
+    tmp0 = $20,
     tmp1,
     tmp2,
     tmp3,
@@ -107,9 +108,9 @@ xmon_h          .def mon.tmp12  ; 8  bits
 xmon_stl        .def mon.tmp13  ; 8  bits
 xmon_stm        .def mon.tmp14  ; 8  bits
 xmon_sth        .def mon.tmp15  ; 8  bits
-xmon_xaml       .def mon.tmp4   ; 8  bits
-xmon_xamm       .def mon.tmp5   ; 8  bits
-xmon_xamh       .def mon.tmp6   ; 8  bits
+xmon_xaml       .def mon.tmp16  ; 8  bits
+xmon_xamm       .def mon.tmp17  ; 8  bits
+xmon_xamh       .def mon.tmp18  ; 8  bits
 
 gs_addr_l       .def mon.tmp0
 gs_addr_m       .def mon.tmp1
@@ -680,7 +681,7 @@ _xmon_setadr:
     sta <xmon_xaml-1,x          ; and to the XAM POINTER
     dex
     bne _xmon_setadr            ; Copy all 3 bytes
-    stz |xmon_ascii_line+16     ; 16 = # of ASCII chars per line
+    stz xmon_ascii_line+16      ; 16 = # of ASCII chars per line
 
     and #$f0                    ; Make rows always start with a multiple of 16
     sta <xmon_xaml,x
@@ -688,11 +689,11 @@ _xmon_setadr:
     ora #$0f
     sta xmon_l
 
-    ldy #15                     ; Size of ascii buffer-1
+    ldx #15                     ; Size of ascii buffer-1
     lda #' '
 _xmon_zero_ascii:
-    sta xmon_ascii_line,y       ; Clear ascii line
-    dey
+    sta xmon_ascii_line,x       ; Clear ascii line
+    dex
     bpl _xmon_zero_ascii
 
     pea _txt_eol                ; New line
@@ -709,7 +710,7 @@ _xmon_nxtprint:
     lda #' '                    ; Delimiter
     jsr _putc
     jsr _putc
-    pea xmon_ascii_line         ; Print ASCII values
+    pea xmon_ascii_line + direct_page   ; Print ASCII values
     ldx #SYS.PUTS
     cop 0
     plx
@@ -780,7 +781,8 @@ _xmon_prdata_isprint:
 _xmon_prdata_ascii_d:
     lda #'.'
 _xmon_prdata_ascii:
-    sta xmon_ascii_line,y       ; Store into string
+    tyx
+    sta xmon_ascii_line,x       ; Store into string
 
 _xmon_xamnext:
     inc xmon_xaml               ; Next address, update pointer
@@ -1272,9 +1274,6 @@ _txt_copy_size:
 _smc_cp         .equ smc_base1
 
 _smc_cp_eep:                    ; This is copied to RAM
-    ;; TODO!
-    ;;  Use DBR for source, [dp],Y for dest
-    ;; Need to correctly account for starting/ending on non-page boundaries
     .as
     sep #$20
     lda copy_d_l                ; Get low byte of dest address
