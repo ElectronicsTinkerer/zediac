@@ -1,6 +1,6 @@
 
 # Actually load information
-load mem c000 ./build/monitor.bin
+load mem C000 ./build/monitor.bin
 sym ./build/monitor.sym
 
 # Uart

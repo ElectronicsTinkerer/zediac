@@ -124,6 +124,7 @@ xr_blk          .def mon.tmp0   ; 8  bits
 xr_blkptr       .def mon.tmp1   ; 24 bits!
 xr_chksum       .def mon.tmp4   ; 8  bits
 xr_isnext       .def mon.tmp5   ; 8  bits
+xr_retry_num    .def mon.tmp6   ; 8  bits
 
 copy_s_l        .def mon.tmp0   ; 8  bits
 copy_s_m        .def mon.tmp1   ; 8  bits
@@ -957,7 +958,7 @@ _txt_args_arg:
     
 ;;; XMODEM transfer RECEIVE command
 ;;; Transferred data is stored in bank 2
-XRECV_NAK_TIMEOUT   .def 1     ; In seconds
+XRECV_NAK_TIMEOUT   .def 3      ; In seconds
 XRECV_BLK_TIMEOUT   .def 1      ; In seconds
 XR_NT_LOAD          .def 50_000 ; In cycles
 XR_NT_COUNT         .def {XRECV_NAK_TIMEOUT * SYS_CLK_HZ} / XR_NT_LOAD   
@@ -974,21 +975,27 @@ _xrecv:
     plx
 
 _xr_wt_nak: 
+    lda #XRECV_NAK_TIMEOUT      ; Set up NAK timeout counter
+    sta xr_retry_num
+
+_xr_wt_flush:   
     ;;  "PURGE" (flush) the input buffer
-    ldx #XR_NT_COUNT            ; Initialize count timeout
+    ldx #XR_BT_COUNT            ; Initialize count timeout
     jsr _getc_to                ; Timeout getc
-    bcs _xr_wait_timeout        ; Got char, keep reading to empty Rx buf
+    bcs _xr_wt_flush            ; Got char, keep reading to empty Rx buf
     ;; Now send the NAK and wait for SOH
     lda #KEY_NAK                ; Send NAK
     jsr _putc
 _xr_wait_timeout:
-    ldx #XR_NT_COUNT            ; Initialize count timeout
+    dec xr_retry_num
+    bmi _xr_wt_nak              ; If we're out of timeouts, resend a NAK
+    ldx #XR_BT_COUNT            ; Initialize count timeout
     jsr _getc_to                ; Timeout getc
     bcc _xr_wait_timeout
     cmp #KEY_CTRL_C             ; Cancel
     beq _xr_done
     cmp #KEY_SOH
-    bne _xr_wt_nak              ; If the main timeout is exhausted, resend NAK
+    bne _xr_wt_nak              ; If character is invalid, resend NAK
     ;; Received start, init block number
     stz xr_blk                  ; Set up block number (actually starts at 1
                                 ; but by having this as 0, the block incrementer
@@ -1059,7 +1066,9 @@ _xr_inv_blkno:
     cld
 _xr_data_loop:
     ldx #XR_BT_COUNT            ; Initialize count timeout
+    phy
     jsr _getc_to                ; Timeout getc
+    ply
     bcc _xr_nak                 ; No char, timeout occured
     sta [xr_blkptr],y
     clc
@@ -1083,7 +1092,7 @@ _xr_data_loop:
     beq _xr_wfs_jmp             ; Yes, don't change block num
     .al                         ; Set block pointer to next region
     rep #$20
-    tya
+    lda #$80                    ; Block size
     clc
     adc xr_blkptr
     sta xr_blkptr
@@ -1357,6 +1366,7 @@ _putc_loop:
     sta >UART0_THR
     rts
 
+    
 ;;; Get a single character from UART0, blocking
 ;;; Requirements:
 ;;;   .as
@@ -1404,7 +1414,7 @@ _getc_nb_cc:
 ;;; Args:
 ;;;   X - number of GETC_LOAD cycles to wait (within some tolerance)
 ;;; Uses:
-;;;   A, X
+;;;   A, X, Y
 ;;; Return:
 ;;;   A contains the received character, if available
 ;;;   p.c = 1 if chararcter was available, 0 otherwise
@@ -1432,7 +1442,7 @@ _gct_delay:
 ;;;   Y - Y * ~1000 cycles to wait (DESTRUCTIVE)
 ;;;       NOTE: a value of 0 is maximum delay, 1 is minimum
 ;;; Uses:
-;;;   X
+;;;   X, Y
 ;;; Return:
 ;;;   NONE
 _delay:
