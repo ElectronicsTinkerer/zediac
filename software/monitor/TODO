@@ -4,7 +4,11 @@ TODO!
 * Add x commands to help menu
 * Revamp build system
 * 0.ffffff only prints 0.f
-* Move ASCII buffer for block XAM to ZP region so address 0 is free'd up for users
+* Make sure each syscall function does not change reg widths flags since no longer under protection of COP
+* New logo
+* Sysclock freq calc & display (save to ZP location for access via a syscall?)
+* Add IRQ/NMI vectors to user-controlled locations
+* Move args stack to $7c00 and limit to 128 args
 
 
 TODONE!
@@ -18,4 +22,5 @@ TODONE!
 * ^C on line does not print newline
 * print index across top of hex dump
 * Add XMODEM file transfer commands (xrecv)
+* Move ASCII buffer for block XAM to ZP region so address 0 is free'd up for users
 
