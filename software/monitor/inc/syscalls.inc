@@ -17,11 +17,12 @@ enum define SYS {
     PD = 4,
     PHW = 6,
     PDW = 8,
-    PUTS = 10,
-    GETC = 12,
-    GETCNB = 14,
-    PUTC = 16,
-    PARX = 18
+    PUTC = 10,
+    PUTS = 12,
+    GETC = 14,
+    GETCNB = 16,
+    GETCTO = 18,
+    PARX = 20
 }
 
 
