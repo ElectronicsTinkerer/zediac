@@ -186,6 +186,12 @@ _txt_mem_map:
     .byte "$b000-$b00f AUXCSB2\n"
     .byte "$b800-$b80f AUXCSB3\n"
     .byte "$c000-$ffff ROM (A23 determines low/high 16k)\n"
+    .byte "\n"
+    .byte "Interrupts:\n"
+    .byte "COP/BRK jump to reset vector\n"
+    .byte "ABT     rti\n"
+    .byte "NMI     $0000\n"
+    .byte "IRQ     $0080\n"
     .byte 0
 _txt_startup:
     .byte "^[[2J^[[H" // Clear screen
@@ -1818,12 +1824,13 @@ emu_vector_cop:
 vector_brk:
     jml >emu_vector_reset       ; RESTART
     
+emu_vector_nmi  .equ $0
+vector_nmi      .equ $0
+emu_vector_irq  .equ $80
+vector_irq      .equ $80
+
 vector_abort:
-vector_nmi:
-vector_irq:
 emu_vector_abt:
-emu_vector_nmi:
-emu_vector_irq:
     rti
 
     
