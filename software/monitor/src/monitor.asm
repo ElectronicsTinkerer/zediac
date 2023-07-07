@@ -159,7 +159,7 @@ _txt_clr_scrn:
 _txt_backspace:
     .byte "\b^[[K",0            ; Back up one char then delete at cursor
 _txt_unk_cmd:
-    .byte "Command not found.\n",0
+    .byte ": Command not found.\n",0
 _txt_help:
     .byte "Available commands:\n"
     .byte " > args [arg1] [...]        Print stack info for passed arguments\n"
@@ -628,8 +628,23 @@ _xmon_hexshift:
     bpl _xmon_nexthex           ; Next character
     jmp _xmon_exit              ; End of text buffer, quit
 
-_xmon_bad_cmd:   
+_xmon_bad_cmd:
     ;; Not a valid command, output an error
+    phb
+    phx
+    lda #{buf >> 16} & $ff      ; Switch to input buffer data bank
+    pha
+    plb
+_xmon_bc_term:                  ; Zero-terminate first token
+    inx 
+    lda |{buf & $ffff},x        ; Get char from line
+    cmp #' '+1                  ; Check to see if it is whitespace
+    bcs _xmon_bc_term           ; No, keep looping
+    stz |{buf & $ffff},x
+    
+    jsl sys_puts
+    ply
+    plb
     pea _txt_unk_cmd            ; Text string
     jsl sys_puts
     plx                         ; Restore stack
