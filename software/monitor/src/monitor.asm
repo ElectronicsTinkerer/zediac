@@ -175,10 +175,20 @@ _txt_help:
     .byte 0
 _txt_startup:
     .byte "^[[2J^[[H" // Clear screen
-    .byte "******* ZEDIA COMPUTER SYSTEM *******\n"
-    .byte "*        SYSTEM MONITOR V1.3        *\n"
-    .byte "*     (C) Ray Clemens  2023     *\n"
-    .byte "*************************************\n"
+    .byte "Welcome to the ...\n"
+    .byte "\n"
+    .byte "##########################\n"
+    .byte "#  .___ ___ ___ ___ __   #\n"
+    .byte "#   __/_[__ |  \ | [__]  #\n"
+    .byte "#  ./__.[___|__/_|_|  |  #\n"
+    .byte "#    COMPUTER  SYSTEM    #\n"
+    .byte "##########################\n"
+    .byte "\n"
+    .byte "(C) Ray Clemens 2023\n"
+    .byte "Monitor : v1.3a (2023-07-06)\n"
+    .byte "RAM : 512k\n"
+    .byte "ROM : 32k\n"
+    .byte "CPU : 65816\n"
     .byte 0
 
     
