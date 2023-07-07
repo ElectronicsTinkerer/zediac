@@ -22,10 +22,10 @@
     .org ROM_BASE
 
 smc_base0       .equ $7c00
-smc_base1       .equ $7d00
+smc_base1       .equ $7c80
+arg_stack       .equ $7d00         
 ; stack_base    .equ $7e00      ; Really $7eff but for keeping things "page orientated" ...
 direct_page     .equ $7f00
-arg_stack       .equ $0         
 buf             .equ $010000    ; Input line buffer
 xrecv_buf       .equ $020000    ; XMODEM receive / send buffer base
 
@@ -307,6 +307,9 @@ _uart0_init_good:
 ;;;
 ;;; The length of the input buffer which is filled is passed via
 ;;; the Y register (.xl)
+;;; 
+;;; There is a max of 100 command arguments. Any arguments past this
+;;; number are simply tokenized into a single string.
 ;;;
 ;;; Once all commands in the above command table have been compared
 ;;; and no match has been found, then the input line is parsed by
@@ -316,10 +319,6 @@ _uart0_init_good:
 ;;;  as both a standalone tool and base to build off of)
 ;;;
 ;;; MEMORY: The monitor uses bank $01 as its input buffer.
-;;; Additionally, the best assumption is that all of the RAM available
-;;; in bank 0 is in use by the monitor. This is not true under most
-;;; circumstances but if you pass a large number of arguments to a
-;;; command (in the order of >100), then the arg stack may take considerable space
 ;;; 
 monitor:
     sei                         ; Disable IRQs
@@ -476,11 +475,14 @@ _me_ad_next:
     rep #$20
     txa
     sta (arg_sp)
-    inc arg_sp                  ; Post-inc the SP
-    inc arg_sp
+    lda arg_sp                  ; Post-inc the SP
+    clc
+    adc #$0002
+    sta arg_sp
+    cmp #arg_stack + {100 * 2}  ; 100 ARGS MAX! (Allocated stack size limitation)
     .as
     sep #$20
-    bra _me_ad_next
+    bcc _me_ad_next             ; Not hit arg limit, keep going
     
 _me_cmd_setup:
     ;; Set up the stack with args pointers
@@ -488,11 +490,11 @@ _me_cmd_setup:
     rep #$20
     ldx arg_sp
 _me_cs_loop:
-    txy                         ; Test if x is zero
+    cpx #arg_stack              ; Test if empty stack
     beq _me_run_cmd             ; Arg pseudo stack is empty => we're done here
     dex                         ; Pre-dec the SP
     dex
-    lda |0,x                    ; Get the arg pointer (force abs addressing)
+    lda |arg_stack,x            ; Get the arg pointer (force abs addressing)
     pha                         ; and put it onto the call stack
     bra _me_cs_loop
     
@@ -733,7 +735,7 @@ _xmon_nexprint_line:
     bcc _xmon_nxtprintadr       ; None, keep going
     cmp #KEY_CTRL_C             ; Ctrl+C?
     bne _xmon_nxtprintadr       ; No.
-    jmp _xmon_exit                 ; Yes, break
+    jmp _xmon_exit              ; Yes, break
 _xmon_nxtprintadr:
     pea _txt_dim                ; Dim the addresses
     jsl sys_puts
