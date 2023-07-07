@@ -513,9 +513,12 @@ _me_cmd_setup:
     ;; Set up the stack with args pointers
     .al
     rep #$20
-    ldx arg_sp
+    lda arg_sp
+    sec
+    sbc #arg_stack
+    tax
 _me_cs_loop:
-    cpx #arg_stack              ; Test if empty stack
+    txy                         ; Test if empty stack
     beq _me_run_cmd             ; Arg pseudo stack is empty => we're done here
     dex                         ; Pre-dec the SP
     dex
