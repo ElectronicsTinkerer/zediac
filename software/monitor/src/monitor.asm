@@ -169,9 +169,23 @@ _txt_help:
     .byte " > go xxxxxx                JML to an address\n"
     .byte " > gosub xxxxxx             JSL to an address (RTL to MONITOR)\n"
     .byte " > help                     Display available commands\n"
+    .byte " > memmap                   Display the system's memory map\n"
     .byte " > xrecv                    XMODEM receive to address $020000\n"
     .byte " > a.b                      Hexdump from a to b\n"
     .byte " > a:b [c] [...]            Store b at address a\n"
+    .byte 0
+_txt_mem_map:
+    .byte "Memory map - mirrored across all banks\n"
+    .byte "\n"
+    .byte "$0000-$7fff RAM (mirrored every 16 banks)\n"
+    .byte "$8000-$800f VIA\n"
+    .byte "$8800-$880f UART\n"
+    .byte "$9000-$9fff *unused*\n"
+    .byte "$a000-$a00f AUXCSB0\n"
+    .byte "$a800-$a80f AUXCSB1\n"
+    .byte "$b000-$b00f AUXCSB2\n"
+    .byte "$b800-$b80f AUXCSB3\n"
+    .byte "$c000-$ffff ROM (A23 determines low/high 16k)\n"
     .byte 0
 _txt_startup:
     .byte "^[[2J^[[H" // Clear screen
@@ -229,6 +243,10 @@ _cmd_table:
     .org {{$ & {CMD_ENTRY_SIZE-1}} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
     .word _eeprom
     .byte "ecopy",0
+    .org {{$ & {CMD_ENTRY_SIZE-1}} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
+    .word _memmap
+    .byte "memmap"              ; no zero terminator! -> 6 chars long
+    
 _cmd_table_end:                 ; Keep me! Used to determine number of entries in table
 
 
@@ -444,10 +462,9 @@ _me_eoc_gc:
     cpx xsav                    ; If at end of entered command, setup stack
     beq _me_args
     lda buf,x                   ; Get char from line
-    cmp #' '                    ; Check to see if it is whitespace
-    beq _me_args
-    cmp #'\t'
-    bne _me_eoc_chk_nxt         ; Not whitespace, try another command
+    cmp #' '+1                  ; Check to see if it is whitespace
+    bcc _me_args                ; Is a space or control char
+    bcs _me_eoc_chk_nxt         ; Not whitespace, try another command
     ;; FT
 _me_args:
     ;; A command was matched.
@@ -471,10 +488,8 @@ _me_ad_next:
     cpx xsav                    ; End of line = done parsing args
     bcs _me_cmd_setup
     lda buf,x                   ; Get char from line
-    cmp #' '
-    beq _me_args_delim          ; Is a space
-    cmp #'\t'
-    beq _me_args_delim          ; Is a tab
+    cmp #' '+1
+    bcc _me_args_delim          ; Is a space or control char
     ;; Not a space
     lda wspc_skip               ; Is this the first non-whitespace character?
     bne _me_ad_next             ; Nope. Ignore the char
@@ -831,6 +846,17 @@ _clear:
     jmp monitor
 
 
+;;; Print the system's memory map
+    .al
+    .xl
+_memmap:
+    .as
+    sep #$20
+    pea _txt_mem_map
+    jsl sys_puts
+    jmp monitor
+
+    
 ;;; JML to a user-specified address
 ;;; JSL to a user-specified address
     .al
@@ -1329,7 +1355,7 @@ _smc_cp_eor:
     rts
 _smc_cp_eep_eos:                ; END OF SUB - keep for SMC init
 
-    
+
 ;;; ------------------------------------
 ;;;  UTILITY FUNCTIONS
 ;;; ------------------------------------
