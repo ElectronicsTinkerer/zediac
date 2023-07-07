@@ -101,17 +101,18 @@ xsav            .def mon.tmp0   ; 16 bits
 ysav            .def mon.tmp2   ; 16 bits
 arg_sp          .def mon.tmp4   ; 16 bits
 line_start      .def mon.tmp6   ; 16 bits
-wspc_skip       .def mon.tmp8   ; 8  bits
-xmon_mode       .def mon.tmp9   ; 8  bits
-xmon_l          .def mon.tmp10  ; 8  bits
-xmon_m          .def mon.tmp11  ; 8  bits
-xmon_h          .def mon.tmp12  ; 8  bits
-xmon_stl        .def mon.tmp13  ; 8  bits
-xmon_stm        .def mon.tmp14  ; 8  bits
-xmon_sth        .def mon.tmp15  ; 8  bits
-xmon_xaml       .def mon.tmp16  ; 8  bits
-xmon_xamm       .def mon.tmp17  ; 8  bits
-xmon_xamh       .def mon.tmp18  ; 8  bits
+cmd_tbl_ptr     .def mon.tmp8   ; 16 bits
+wspc_skip       .def mon.tmp10  ; 8  bits
+xmon_mode       .def mon.tmp11  ; 8  bits
+xmon_l          .def mon.tmp12  ; 8  bits
+xmon_m          .def mon.tmp13  ; 8  bits
+xmon_h          .def mon.tmp14  ; 8  bits
+xmon_stl        .def mon.tmp15  ; 8  bits
+xmon_stm        .def mon.tmp16  ; 8  bits
+xmon_sth        .def mon.tmp17  ; 8  bits
+xmon_xaml       .def mon.tmp18  ; 8  bits
+xmon_xamm       .def mon.tmp19  ; 8  bits
+xmon_xamh       .def mon.tmp20  ; 8  bits
 
 gs_addr_l       .def mon.tmp0
 gs_addr_m       .def mon.tmp1
@@ -177,21 +178,21 @@ _txt_help:
 _txt_mem_map:
     .byte "Memory map - mirrored across all banks\n"
     .byte "\n"
-    .byte "$0000-$7fff RAM (mirrored every 16 banks)\n"
-    .byte "$8000-$800f VIA\n"
-    .byte "$8800-$880f UART\n"
-    .byte "$9000-$9fff *unused*\n"
-    .byte "$a000-$a00f AUXCSB0\n"
-    .byte "$a800-$a80f AUXCSB1\n"
-    .byte "$b000-$b00f AUXCSB2\n"
-    .byte "$b800-$b80f AUXCSB3\n"
-    .byte "$c000-$ffff ROM (A23 determines low/high 16k)\n"
+    .byte " $0000-$7fff RAM (mirrored every 16 banks)\n"
+    .byte " $8000-$800f VIA\n"
+    .byte " $8800-$880f UART\n"
+    .byte " $9000-$9fff *unused*\n"
+    .byte " $a000-$a00f AUXCSB0\n"
+    .byte " $a800-$a80f AUXCSB1\n"
+    .byte " $b000-$b00f AUXCSB2\n"
+    .byte " $b800-$b80f AUXCSB3\n"
+    .byte " $c000-$ffff ROM (A23 determines low/high 16k)\n"
     .byte "\n"
     .byte "Interrupts:\n"
-    .byte "COP/BRK jump to reset vector\n"
-    .byte "ABT     rti\n"
-    .byte "NMI     $0000\n"
-    .byte "IRQ     $0080\n"
+    .byte " COP/BRK jump to reset vector\n"
+    .byte " ABT     rti\n"
+    .byte " NMI     $0000\n"
+    .byte " IRQ     $0080\n"
     .byte 0
 _txt_startup:
     .byte "^[[2J^[[H" // Clear screen
@@ -215,43 +216,48 @@ _txt_startup:
 ;;; ------------------------------------
 ;;;  COMMAND BANK
 ;;; ------------------------------------
-;;; Command table (each entry is 8 bytes):
+;;; Command table
 ;;; 2 bytes: jump address for command
-;;; 6 bytes: (zero-terminated or 6 chars) string of command
+;;; 1 byte:  length of command
+;;; n bytes: the command string
 
-CMD_ENTRY_SIZE  .def 8           ; In bytes (must be a power of 2)
-CMD_STR_SIZE    .def 6           ; In bytes
-
-    ;; Each entry must be aligned by the size of an entry, hence the
-    ;; funky .org expression before each entry
-    .org {{$ & {CMD_ENTRY_SIZE-1}} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
 _cmd_table:
     .word _help
-    .byte "help",0
-    .org {{$ & {CMD_ENTRY_SIZE-1}} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
+    .byte _cmd_help_end - $
+    .byte "help"
+_cmd_help_end:
     .word _clear
-    .byte "clear",0
-    .org {{$ & {CMD_ENTRY_SIZE-1}} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
+    .byte _cmd_clear_end - $
+    .byte "clear"
+_cmd_clear_end:
     .word _args
-    .byte "args",0
-    .org {{$ & {CMD_ENTRY_SIZE-1}} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
+    .byte _cmd_args_end - $
+    .byte "args"
+_cmd_args_end:
     .word _xrecv
-    .byte "xrecv",0
-    .org {{$ & {CMD_ENTRY_SIZE-1}} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
+    .byte _cmd_xrecv_end - $
+    .byte "xrecv"
+_cmd_xrecv_end:
     .word _go
-    .byte "go",0
-    .org {{$ & {CMD_ENTRY_SIZE-1}} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
+    .byte _cmd_go_end - $
+    .byte "go"
+_cmd_go_end:
     .word _gosub
-    .byte "gosub",0
-    .org {{$ & {CMD_ENTRY_SIZE-1}} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
+    .byte _cmd_gosub_end - $
+    .byte "gosub"
+_cmd_gosub_end:
     .word _copy
-    .byte "copy",0
-    .org {{$ & {CMD_ENTRY_SIZE-1}} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
+    .byte _cmd_copy_end - $
+    .byte "copy"
+_cmd_copy_end:
     .word _eeprom
-    .byte "ecopy",0
-    .org {{$ & {CMD_ENTRY_SIZE-1}} != 0} * CMD_ENTRY_SIZE + {$ & ~{CMD_ENTRY_SIZE-1}}
+    .byte _cmd_eeprom_end - $
+    .byte "ecopy"
+_cmd_eeprom_end:
     .word _memmap
+    .byte _cmd_memmap_end - $
     .byte "memmap"              ; no zero terminator! -> 6 chars long
+_cmd_memmap_end:
     
 _cmd_table_end:                 ; Keep me! Used to determine number of entries in table
 
@@ -443,27 +449,22 @@ _me_rm_wspc:
     ;; Parse line. Jumps to a command after tokenizing the remainder of the line.
     ;; Pushes last arg first. The last data pushed is a single byte count of the number
     ;; of arguments available on the stack
-
-    ldy #0                      ; Command table index (O(n) search)
+    ;; Command table index (O(n) search)
+    ldy #_cmd_table+2           ; Set up our data pointer to point at the
+    sty cmd_tbl_ptr             ; size of the entry, not the start of the entry
 _me_loop_init:
     ldx line_start              ; X is line index
+    ldy #0
 _me_loop:
-    lda _cmd_table+2,y          ; Get char from command entry
-    beq _me_eoc_chk
-    cmp buf,x                   ; Get char from line
-    bne _me_eoc_chk
     iny
+    lda (cmd_tbl_ptr),y         ; Get char from command entry
+    cmp buf,x                   ; Get char from line
+    bne _me_eoc_gc
     inx
-    cpy #CMD_STR_SIZE
-    bne _me_loop
-    dex
+    tya
+    cmp <(cmd_tbl_ptr)          ; End of command string?
+    bne _me_loop                ; Nope, keep checking chars
     ;; If max string size, check for equality
-_me_eoc_chk:
-    cmp #0
-    beq _me_eoc_gc
-    cpy #CMD_STR_SIZE
-    bne _me_eoc_chk_nxt
-    ;; FT
 _me_eoc_gc:
     cpx xsav                    ; If at end of entered command, setup stack
     beq _me_args
@@ -543,26 +544,30 @@ _me_run_cmd:
     pha                         ; Store the number of arguments to the command as the last entry on the stack
     .al
     rep #$20
-    lda ysav                    ; Restore command table index
-    and #{$ffff-{CMD_ENTRY_SIZE-1}} ; Mask off lowest bits (indicating index into the current entry)      
+    lda cmd_tbl_ptr
+    sec
+    sbc #_cmd_table + 2         ; Get index to base of table
     tax                         ; X now has the base address of the entry (which is a pointer)
     ldy xsav                    ; Y now contains the line length
     jmp (_cmd_table,x)          ; Execute command
 
+    .as
 _me_eoc_chk_nxt:
+    lda #0
+    xba
+    lda (cmd_tbl_ptr)
     .al
-    rep #$20
+    rep #$21                    ; Also clear carry
     ;; Increment index to next command entry
-    tya
-    and #{$ffff-{CMD_ENTRY_SIZE-1}} ; Mask off lowest bits (which indicate the index into the current entry)
+    adc cmd_tbl_ptr
     clc
-    adc #CMD_ENTRY_SIZE
-    tay
+    adc #2                      ; Skip the jump address
+    sta cmd_tbl_ptr
+    cmp #_cmd_table_end         ; Get the end of the table
     .as
     sep #$20
-    cpy #_cmd_table_end - _cmd_table ; Get the size of the table in bytes
     bcs _me_cmd_invalid
-    jmp _me_loop_init
+    jmp _me_loop_init           ; If less than the ending address, keep searching
 
 _me_cmd_invalid:
     ;; Maybe it's a low-level monitor command
