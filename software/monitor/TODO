@@ -5,8 +5,6 @@ TODO!
 * Revamp build system
 * 0.ffffff only prints 0.f
 * Sysclock freq calc & display (save to ZP location for access via a syscall?)
-* Add IRQ/NMI vectors to user-controlled locations
-* Print the command that is not found
 * Correct command match when command is 6 chars long
 
 TODONE!
@@ -25,3 +23,5 @@ TODONE!
 * New logo
 * Make sure each syscall function does not change reg widths flags since no longer under protection of COP
   - Most do not make changes. Those that do make note of this in the RETURN header section
+* Print the command that is not found
+* Add IRQ/NMI vectors to user-controlled locations
