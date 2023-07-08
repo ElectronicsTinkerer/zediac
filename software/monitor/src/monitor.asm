@@ -209,7 +209,7 @@ _txt_startup:
     .byte "##########################\n"
     .byte "\n"
     .byte "(C) Ray Clemens 2023\n"
-    .byte "Monitor : v1.3a (2023-07-06)\n"
+    .byte "Monitor : v1.4 (2023-07-07)\n"
     .byte "RAM : 512k\n"
     .byte "ROM : 32k\n"
     .byte "CPU : 65816 @ "
@@ -278,7 +278,7 @@ emu_vector_reset:
     xce
     .xl
     rep #$10
-    ldx #3000
+    ldy #3000
     jsl sys_delay               ; The UART says it needs about 0.5s to reset after power up
     
 warm_reset: 
@@ -1112,7 +1112,7 @@ _xr_wait_timeout:
     dec xr_retry_num
     bmi _xr_wt_nak              ; If we're out of timeouts, resend a NAK
     ldx #XRECV_BLK_TIMEOUT      ; Initialize count timeout
-    jsr sys_getc_to             ; Timeout getc
+    jsl sys_getc_to             ; Timeout getc
     bcc _xr_wait_timeout
     cmp #KEY_CTRL_C             ; Cancel
     beq _xr_done
@@ -1525,8 +1525,9 @@ _gct_wait:
 _gct_done:  
     rtl                         ; Got char, return
 _gct_delay:
-    dex
+    txy
     beq _gct_done
+    dex
     phx
     ldy cpu_freq_khz
     jsl sys_delay
@@ -1906,8 +1907,8 @@ _sys_ph_lval:
 ;;;  SYSCALL TABLE
 ;;; ------------------------------------
 ;;; SYSCALLS can be accessed by loading
-;;; X with the syscall index then executing
-;;; a jsr (syscall_table,x) instruction.
+;;; X with the syscall index then simulating
+;;; a jsl (syscall_table,x) instruction.
 ;;; Alternatively, (a slightly less portable
 ;;; method is to) just jsl to the syscall
 ;;; subroutine name

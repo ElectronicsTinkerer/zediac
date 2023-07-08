@@ -4,6 +4,11 @@ TODO!
 * Add x commands to help menu
 * Revamp build system - how?
 * 0.ffffff only prints 0.f
+* Double check Rx/Tx LED silk labeling
+* v1.4:
+  - memmap: Command not found
+  - [fixed] xrecv crash on command execution
+  - args prints two trailing 0 to argc
 
 TODONE!
 
