@@ -418,7 +418,10 @@ _uart0_init_good:
 ;;; the Y register (.xl)
 ;;; 
 ;;; There is a max of 100 command arguments. Any arguments past this
-;;; number are simply tokenized into a single string.
+;;; number are simply tokenized into a single string. (i.e., the
+;;; first 99 args are properly tokenized by whitespace. The 100th
+;;; token and all remaining text on the input line is combined into
+;;; a single token).
 ;;;
 ;;; Once all commands in the above command table have been compared
 ;;; and no match has been found, then the input line is parsed by
@@ -1029,6 +1032,7 @@ _args:
     plx
     pla                         ; Get argc off stack
     pha
+    clc
     jsl sys_putdec
     
     pla
@@ -1767,6 +1771,7 @@ _sys_pd_nzeros:
 _sys_pd_nz_no:  
     lda syscall.tmp0,x
     dex
+    bmi _sys_pd_nz_prlast       ; Print just the last char if the rest were 0's (last iteration)
     and #$0f
     beq _sys_pd_nzeros          ; Both chars were 0, check next octet
     jsl _prhex
@@ -1779,6 +1784,7 @@ _sys_pd_nz_l:
     jsl _prhex                  ; Print the char if not 0
 _sys_pd_nz_found:
     lda syscall.tmp0,x
+_sys_pd_nz_prlast:  
     jsl _prhex
     dex
     bpl _sys_pd_nz_l

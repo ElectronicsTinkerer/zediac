@@ -8,7 +8,7 @@ TODO!
 * v1.4:
   - memmap: Command not found
   - [fixed] xrecv crash on command execution
-  - args prints two trailing 0 to argc
+  - [fixed] args prints two trailing 0 to argc
 
 TODONE!
 
