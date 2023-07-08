@@ -5,6 +5,7 @@ TODO!
 * Revamp build system - how?
 * 0.ffffff only prints 0.f
 * Double check Rx/Tx LED silk labeling
+* xrecv timeout needs smaller grainularity
 
 TODONE!
 
