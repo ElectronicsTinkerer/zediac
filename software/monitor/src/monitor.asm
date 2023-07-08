@@ -353,30 +353,24 @@ _uart0_cpu_freq:
     clc
     adc cpu_freq_khz            ; + y*2
     sta cpu_freq_khz            ; kHz calc done
-    
-    lsr                         ; kHz/2
-    lsr                         ; kHz/4
-    lsr                         ; kHz/8
+    ;; Divide the kHz by 1000 (actually 1024) to get approximate MHz
+    .as
+    sep #$20
+    lda #0
+    xba
+    lsr                         ; kHz/256
+    lsr                         ; kHz/512
+    lsr                         ; kHz/1024
     pha
-    lsr                         ; kHz/16
-    sta cpu_freq_mhz
-    lsr                         ; khZ/32
-    lsr                         ; kHz/64
-    clc
-    adc cpu_freq_mhz            ; 
-    sta cpu_freq_mhz            ; kHz/16 + kHz/64
+    lda cpu_freq_khz + 1
+    rol                         ; Get high bit into carry
     pla
-    clc
-    adc cpu_freq_mhz
-    sta cpu_freq_mhz            ; kHz/8 + kHz/16 + kHz/64 ~= kHz/5
-    lda cpu_freq_khz
-    sec
-    sbc cpu_freq_mhz            ; 1 - (1/5) = 4/5
-    lsr
-    lsr
-    lsr
-    sta cpu_freq_mhz            ; Done! kHz/10 (ish) -> about 0.4% off
-    
+    adc #0                      ; This corrects by adding kHz/2^15 back after dividing by 1024
+    .al
+    rep #$20
+    bne $+5
+    lda #1                      ; Minimum of 1
+    sta cpu_freq_mhz            ; Done! kHz/1000 (ish) -> about 0.7% off
 
     ;; Back to UART initialization
     .as
@@ -1148,14 +1142,19 @@ _xr_wait_timeout:
     cmp #KEY_SOH
     bne _xr_wt_nak              ; If character is invalid, resend NAK
     ;; Received start, init block number
-    stz xr_blk                  ; Set up block number (actually starts at 1
-                                ; but by having this as 0, the block incrementer
-                                ; logic will inc the block the first time)
+    stz xr_blk                  ; Set up block number
+    lda #$80
+    sta xr_init_done            ; The first block header has not been received yet
     ldy #xrecv_buf >> 8         ; Initialize data receive pointer
     sty xr_blkptr+1
     lda #xrecv_buf & $ff
     sta xr_blkptr
     jmp _xr_soh
+
+_xr_can:       
+    lda #KEY_CAN                ; Send CAN
+    jsl sys_putc
+    jmp monitor                 ; FAILED
 
 _xr_nak:
     ;;  "PURGE" (flush) the input buffer
@@ -1181,11 +1180,6 @@ _xr_wait_for_soh:
 _xr_done:   
     jmp monitor                 ; DONE
 
-_xr_can:       
-    lda #KEY_CAN                ; Send CAN
-    jsl sys_putc
-    jmp monitor                 ; FAILED
-
 _xr_soh:
     ;;  SOH was just received, get the block number
     ldx #XRECV_BLK_TIMEOUT      ; Initialize count timeout
@@ -1201,7 +1195,11 @@ _xr_soh:
     ;; Yes, this is the next block
     inc xr_isnext               ; Is a new block number = 1
     inc xr_blk
-    bmi _xr_can                 ; If too long, cancel
+    bit xr_init_done            ; If this is the first block, don't perform a 
+    bmi _xr_inv_blkno           ; length limit check
+    lda xr_blk                  ;
+    cmp #1                      ; Otherwise, if 256 blocks have been received
+    beq _xr_can                 ; then send the CANcel
 _xr_inv_blkno:  
     ;; Get inverted block number
     ldx #XRECV_BLK_TIMEOUT      ; Initialize count timeout
@@ -1211,6 +1209,8 @@ _xr_inv_blkno:
     cmp xr_blk
     bne _xr_can                 ; Invalid block number
 
+    stz xr_init_done            ; We've received a header, init is done
+    
     ;;  Now, we're getting data
     stz xr_chksum
     ldy #0
@@ -1385,7 +1385,8 @@ _cp_eep:
     lda #_smc_cp_eep_eos - _smc_cp_eep - 1
     mvn 0,0
     jsr _smc_cp
-    jmp monitor
+    ldx #0
+    jmp (reset_ptr,x)           ; Full-on reset since we don't know what state the EEPROM is in
 
 _copy_eep:                      ; Requires destination to be EEPROM
     pea 0
@@ -1660,7 +1661,7 @@ _smc_memcpy:
     sta |_smc_mc_mvn + 1 - _smc_memcpy + sys_memcpy ; Destination bank
     .al
     rep #$20
-    lda 4,s                     ; Get byte count
+    lda 5,s                     ; Get byte count
     dea                         ; MVN uses C+1 as the byte transfer count
 _smc_mc_mvn:
     mvn 0,0                     ; Banks modified sta's above
@@ -2009,6 +2010,7 @@ emu_vector_abt:
     .word 0                     ; Reserved
     .word emu_vector_abt
     .word emu_vector_nmi
+reset_ptr:
     .word emu_vector_reset
     .word emu_vector_irq        ; Also BRK
     

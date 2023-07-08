@@ -5,7 +5,6 @@ TODO!
 * Revamp build system - how?
 * 0.ffffff only prints 0.f
 * Double check Rx/Tx LED silk labeling
-* xrecv timeout needs smaller grainularity
 
 TODONE!
 
@@ -32,3 +31,4 @@ TODONE!
   - [fixed] memmap: Command not found
   - [fixed] xrecv crash on command execution
   - [fixed] args prints two trailing 0 to argc
+* xrecv timeout needs smaller grainularity
