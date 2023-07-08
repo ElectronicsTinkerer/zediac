@@ -210,7 +210,7 @@ _txt_startup:
     .byte "##########################\n"
     .byte "\n"
     .byte "(C) Ray Clemens 2023\n"
-    .byte "Monitor : v1.5 (2023-07-08)\n"
+    .byte "Monitor : v1.6 (2023-07-08)\n"
     .byte "RAM : 512k\n"
     .byte "ROM : 32k\n"
     .byte "CPU : 65816 @ "
@@ -1355,6 +1355,8 @@ _copy_noeep:                    ; Can't copy TO eeprom
     pea 0
     plb
     pea _txt_copy_ne
+    .as
+    sep #$20
     jsl sys_puts
     jmp monitor
     
@@ -1404,11 +1406,11 @@ _txt_copy_help:
 _txt_copy_nx:
     .byte "Arguments must be valid hex addresses.\n",0
 _txt_copy_ne:
-    .byte "Cannot `copy` to EEPROM. (Addr range $C000-$FFFF)\n",0
+    .byte "Cannot `copy` to EEPROM. (Addr range [$C000..$FFFF])\n",0
 _txt_copy_eep:
-    .byte "Destination must be EEPROM. (Addr range $C000-$FFFF)\n",0
+    .byte "Destination must be EEPROM. (Addr range [$C000..$FFFF]\n",0
 _txt_copy_feep:
-    .byte "Cannot `ecopy` from EEPROM to EEPROM. (Addr range $C000-$FFFF)\n",0
+    .byte "Cannot `ecopy` from EEPROM to EEPROM. (Addr range [$C000..$FFFF])\n",0
 _txt_copy_size:
     .byte "Valid e/copy count: [1..$8000]\n",0
 
@@ -1606,6 +1608,11 @@ _d_loop:
 sys_memcpy_init:
     php
     phb
+    .as
+    sep #$20
+    lda #{sys_memcpy >> 16} & $ff
+    pha
+    plb
     .al
     .xl
     rep #$30
@@ -1642,6 +1649,12 @@ sys_memcpy     .equ smc_base0
     .as
     .xl
 _smc_memcpy:
+    phb                         ; Save data bank
+    pha
+    lda #{sys_memcpy >> 16} & $ff
+    pha
+    plb
+    pla
     sta |_smc_mc_mvn + 2 - _smc_memcpy + sys_memcpy ; Source bank (self-modifying code!)
     xba
     sta |_smc_mc_mvn + 1 - _smc_memcpy + sys_memcpy ; Destination bank
@@ -1649,7 +1662,6 @@ _smc_memcpy:
     rep #$20
     lda 4,s                     ; Get byte count
     dea                         ; MVN uses C+1 as the byte transfer count
-    phb                         ; Save data bank
 _smc_mc_mvn:
     mvn 0,0                     ; Banks modified sta's above
     .as
