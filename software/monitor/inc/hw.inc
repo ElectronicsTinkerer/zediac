@@ -7,6 +7,7 @@
 ;;; 2023-04-28: Created file
 ;;; 2023-05-16: Added VIA0 register defs
 ;;; 2023-06-09: Update symbols to make use of new .def SLIME support
+;;; 2023-07-07: Remove SYS_CLK_HZ define (now have onboard measurement)
 ;;;
 ;;;
 
@@ -33,8 +34,6 @@ ROM_BASE        .equ $C000
 ;;; ===============================
 ROM_SIZE        .def $4000
 
-SYS_CLK_HZ      .def 5_000_000
-    
 ;;; ===============================
 ;;; HARDWARE REGISTERS
 ;;; ===============================
