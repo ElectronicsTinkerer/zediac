@@ -2,9 +2,8 @@ TODO!
 
 * Add XMODEM file transfer commands (xsend)
 * Add x commands to help menu
-* Revamp build system
+* Revamp build system - how?
 * 0.ffffff only prints 0.f
-* Sysclock freq calc & display (save to ZP location for access via a syscall?)
 
 TODONE!
 
@@ -25,3 +24,5 @@ TODONE!
 * Print the command that is not found
 * Add IRQ/NMI vectors to user-controlled locations
 * Correct command match when command is 6 chars long
+* Sysclock freq calc & display (save to ZP location for access via a syscall?)
+* Cold reset delay of 0.5s for UART init

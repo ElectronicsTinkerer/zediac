@@ -35,7 +35,7 @@ GETC_LOAD       .def 50_000     ; Clock cycles
 ;;; ------------------------------------
 ;;;  DIRECT PAGE VARIABLES
 ;;; ------------------------------------
-xmon_ascii_line .def 0          ; ASCII temp storage for hex monitor
+xmon_ascii_line .def 0          ; ASCII temp storage for hex monitor (16 bytes)
 
 enum define syscall {
     tmp0 = $10,
@@ -91,6 +91,9 @@ enum define mon {
     tmp31
 }
 
+;;; CPU frequency storage (in kHz)
+cpu_freq_khz    .equ $fe        ; 16 bits
+    
 
 s_px_l          .def syscall.tmp0
 s_px_m          .def syscall.tmp1
@@ -209,8 +212,10 @@ _txt_startup:
     .byte "Monitor : v1.3a (2023-07-06)\n"
     .byte "RAM : 512k\n"
     .byte "ROM : 32k\n"
-    .byte "CPU : 65816\n"
+    .byte "CPU : 65816 @ "
     .byte 0
+_txt_startup_end:
+    .byte " kHz\n",0
 
     
 ;;; ------------------------------------
@@ -265,7 +270,18 @@ _cmd_table_end:                 ; Keep me! Used to determine number of entries i
 ;;; ------------------------------------
 ;;;  ENTRY POINT
 ;;; ------------------------------------
-emu_vector_reset:   
+;;; Make sure it is page-boundary aligned for self-timing loop
+    .org {{$ & $ff} != 0} * $100 + {$ & ~{$ff}}
+emu_vector_reset:
+    sei                         ; Disable IRQs
+    clc
+    xce
+    .xl
+    rep #$10
+    ldx #3000
+    jsl sys_delay               ; The UART says it needs about 0.5s to reset after power up
+    
+warm_reset: 
     sei                         ; Disable IRQs
     clc                         ; Switch to native mode
     xce
@@ -275,9 +291,10 @@ emu_vector_reset:
     rep #$30
     lda #direct_page            ; Set direct page to just above stack
     tcd
+    stz cpu_freq_khz            ; Reset CPU frequency counter
+    
     .as
-    .xs
-    sep #$30                    ; 8-bit mode
+    sep #$20                    ; 8-bit mode
 
     ;; Initialize VIA to inputs
     stz VIA0_DDRB
@@ -286,7 +303,17 @@ emu_vector_reset:
     ;; UART0 INIT
     lda #$80                    ; Switch to divisor register access 
     sta UART0_LCR
-    lda #8                      ; Set BAUD to 115200 (clock in is 8 * 1.8432MHz)
+    lda #92+2                   ; Set BAUD to 10000 (clock in is 8 * 1.8432MHz)
+                                ;  92.16 = (8 * 1.8432) / 16 * 100us
+                                ; Wondering what the +2 is? For some reason
+                                ; (probably the sample clock being in the middle
+                                ; of the bit period), the UART's round-trip
+                                ; time when in loopback mode is consistently
+                                ; about 2% faster than expected for a given
+                                ; baudrate. Hence the +2. Since 92 is already
+                                ; rounding down, adding the 2 is pretty close
+                                ; to adding 2% more bit time. The result?
+                                ; We can get ~0.1% accuracy.
     sta UART0_DLL               ; Low byte
     lda #0
     sta UART0_DLM               ; High byte
@@ -301,30 +328,72 @@ emu_vector_reset:
     lda #$13                    ; Set DTR and RTS, enable loopback (for selftest)
     sta UART0_MCR
     lda #'A'                    ; Test value
-    sta UART0_THR
-    ldy #2                      ; 2000 cycles
-    jsl sys_delay               ; Wait for byte to be recieved
+    sta UART0_THR               ; TIMER START
+
+    ;; This times how long it takes for the send character through the UART's loopback.
+    ;; Since that crystal's frequency should always be the same (I have no reason or plans
+    ;; to change it), we can use the loopback time as a gauge for the CPU's frequency.
+    ldy #0
+_uart0_cpu_freq:
+    iny                         ; (2)
+    lda UART0_LSR               ; Check if data is available (4)
+    ror                         ; (2)
+    bcc _uart0_cpu_freq         ; (3)
+    .al
+    rep #$20
+    sty cpu_freq_khz            ; Now we multiply Y by the # of cycles per loop (11)
+    tya
+    asl                         ; y*8
+    asl
+    asl
+    clc
+    adc cpu_freq_khz            ; + y
+    asl cpu_freq_khz
+    clc
+    adc cpu_freq_khz            ; + y*2
+    sta cpu_freq_khz
+
+    ;; Back to UART initialization
+    .as
+    sep #$20
     lda UART0_RHR
     cmp #'A'                    ; Did we get the same character back?
     beq _uart0_init_good        ; Yes
     jmp _err                    ; No, indicate error condition
 _uart0_init_good: 
+    lda #$80                    ; Switch to divisor register access 
+    sta UART0_LCR
+    lda #8                      ; Set BAUD to 115200 (clock in is 8 * 1.8432MHz)
+    sta UART0_DLL               ; Low byte
+    lda #0
+    sta UART0_DLM               ; High byte
+    lda #$03                    ; 8-bits, no parity, 1 stop bit, switch back to data registers
+    sta UART0_LCR
+    pha
     lda #$03                    ; Enable Receive buffer and Transmitter Holding Reg Empty interrupts
     sta UART0_MCR
-    ldx UART0_LCR               ; Save for later
     lda #$bf                    ; Enable access to EFR
     sta UART0_LCR
     lda #$c0                    ; Enable automatic CTS/RTS control
     sta UART0_EFR
-    stx UART0_LCR               ; Restore line settings
+    pla
+    sta UART0_LCR               ; Restore line settings
     ;; END: UART0 INIT
 
     ;; Startup banner
-    .xl
-    rep #$10                    ; PUTS requires long X
     pea _txt_startup
     jsl sys_puts
     plx                         ; Restore stack
+    .as
+    rep #$21
+    lda cpu_freq_khz
+    jsl sys_putdec_word
+    .as
+    sep #$20
+    pea _txt_startup_end
+    jsl sys_puts
+    plx                         ; Restore stack
+    
 
 ;;; ============= MONITOR PROMPT =============
 ;;; The MONITOR allows passing arguments to commands.
@@ -1017,9 +1086,6 @@ _txt_args_arg:
 ;;; Transferred data is stored in bank 2
 XRECV_NAK_TIMEOUT   .def 3      ; In seconds
 XRECV_BLK_TIMEOUT   .def 1      ; In seconds
-XR_NT_LOAD          .def 50_000 ; In cycles
-XR_NT_COUNT         .def {XRECV_NAK_TIMEOUT * SYS_CLK_HZ} / XR_NT_LOAD   
-XR_BT_COUNT         .def {XRECV_BLK_TIMEOUT * SYS_CLK_HZ} / XR_NT_LOAD   
 
 _xrecv:
     .as
@@ -1036,7 +1102,7 @@ _xr_wt_nak:
 
 _xr_wt_flush:   
     ;;  "PURGE" (flush) the input buffer
-    ldx #XR_BT_COUNT            ; Initialize count timeout
+    ldx #XRECV_BLK_TIMEOUT      ; Initialize count timeout
     jsl sys_getc_to             ; Timeout getc
     bcs _xr_wt_flush            ; Got char, keep reading to empty Rx buf
     ;; Now send the NAK and wait for SOH
@@ -1045,7 +1111,7 @@ _xr_wt_flush:
 _xr_wait_timeout:
     dec xr_retry_num
     bmi _xr_wt_nak              ; If we're out of timeouts, resend a NAK
-    ldx #XR_BT_COUNT            ; Initialize count timeout
+    ldx #XRECV_BLK_TIMEOUT      ; Initialize count timeout
     jsr sys_getc_to             ; Timeout getc
     bcc _xr_wait_timeout
     cmp #KEY_CTRL_C             ; Cancel
@@ -1064,13 +1130,13 @@ _xr_wait_timeout:
 
 _xr_nak:
     ;;  "PURGE" (flush) the input buffer
-    ldx #XR_BT_COUNT            ; Initialize count timeout
+    ldx #XRECV_BLK_TIMEOUT      ; Initialize count timeout
     jsl sys_getc_to             ; Timeout getc
     bcs _xr_nak                 ; Got char, keep reading to empty Rx buf
     lda #KEY_NAK                ; Send NAK now that everything has been read in
     jsl sys_putc
 _xr_wait_for_soh:
-    ldx #XR_BT_COUNT            ; Initialize count timeout
+    ldx #XRECV_BLK_TIMEOUT      ; Initialize count timeout
     jsl sys_getc_to             ; Timeout getc
     bcc _xr_wait_for_soh        ; No char, timeout occured
     cmp #KEY_SOH
@@ -1093,7 +1159,7 @@ _xr_can:
 
 _xr_soh:
     ;;  SOH was just received, get the block number
-    ldx #XR_BT_COUNT            ; Initialize count timeout
+    ldx #XRECV_BLK_TIMEOUT      ; Initialize count timeout
     jsl sys_getc_to             ; Timeout getc
     bcc _xr_nak                 ; No char, timeout occured
     cmp xr_blk
@@ -1109,7 +1175,7 @@ _xr_soh:
     bmi _xr_can                 ; If too long, cancel
 _xr_inv_blkno:  
     ;; Get inverted block number
-    ldx #XR_BT_COUNT            ; Initialize count timeout
+    ldx #XRECV_BLK_TIMEOUT      ; Initialize count timeout
     jsl sys_getc_to             ; Timeout getc
     bcc _xr_nak                 ; No char, timeout occured
     eor #$ff
@@ -1121,7 +1187,7 @@ _xr_inv_blkno:
     ldy #0
     cld
 _xr_data_loop:
-    ldx #XR_BT_COUNT            ; Initialize count timeout
+    ldx #XRECV_BLK_TIMEOUT      ; Initialize count timeout
     phy
     jsl sys_getc_to             ; Timeout getc
     ply
@@ -1135,7 +1201,7 @@ _xr_data_loop:
     bcc _xr_data_loop           ; If we have not received 128 bytes, keep going
     
     ;; Now check checksum
-    ldx #XR_BT_COUNT            ; Initialize count timeout
+    ldx #XRECV_BLK_TIMEOUT      ; Initialize count timeout
     jsl sys_getc_to             ; Timeout getc
     bcc _xr_nak_jmp             ; No char, timeout occured
     cmp xr_chksum
@@ -1444,7 +1510,7 @@ _getc_nb_cc:
 ;;; Requirements:
 ;;;   .as
 ;;; Args:
-;;;   X - number of GETC_LOAD cycles to wait (within some tolerance)
+;;;   X - number of seconds to wait (within some tolerance)
 ;;; Uses:
 ;;;   A, X, Y
 ;;; Return:
@@ -1462,7 +1528,7 @@ _gct_delay:
     dex
     beq _gct_done
     phx
-    ldy #GETC_LOAD
+    ldy cpu_freq_khz
     jsl sys_delay
     plx
     jmp _gct_wait
@@ -1637,6 +1703,7 @@ _putc_loop:
 ;;;   A - The byte or word to print (DESTRUCTIVE)
 ;;;       The width of A (M flag) determines if a word or byte
 ;;;       is printed.
+;;;   c - If set, print leading 0's.
 ;;; Uses:
 ;;;   X
 ;;; Return:
@@ -1645,6 +1712,10 @@ _putc_loop:
 ;;; converted for 65816
 sys_putdec:
 sys_putdec_word:
+    stz syscall.tmp6            ; Clear flag to indicate no leading 0's
+    bcc _sys_putdec_st
+    dec syscall.tmp6
+_sys_putdec_st: 
     php
     php                         ; Save A's width
     .al
@@ -1676,7 +1747,44 @@ _sys_putdec_cnvbit:
     rep #$20
     dex                         ; Next bit
     bne _putdec_cnvbit
+
+    bit syscall.tmp6            ; Do we print leading 0's?
+    bmi _sys_pd_pzeros          ; Yes
+    ;; No
+    .as
+    sep #$20
+    ldx #2
+_sys_pd_nzeros: 
+    lda syscall.tmp0,x
+    lsr
+    lsr
+    lsr
+    lsr
+    beq _sys_pd_nz_no
+    jsl _prhex                  ; Print the char if not 0
+    jmp _sys_pd_nz_found
+_sys_pd_nz_no:  
+    lda syscall.tmp0,x
+    dex
+    and #$0f
+    beq _sys_pd_nzeros          ; Both chars were 0, check next octet
+    jsl _prhex
+_sys_pd_nz_l:   
+    lda syscall.tmp0,x
+    lsr
+    lsr
+    lsr
+    lsr
+    jsl _prhex                  ; Print the char if not 0
+_sys_pd_nz_found:
+    lda syscall.tmp0,x
+    jsl _prhex
+    dex
+    bpl _sys_pd_nz_l
+    plp                         ; Restore A's width
+    rtl
     
+_sys_pd_pzeros: 
     lda syscall.tmp1            ; Upper 2 bytes of decimal number
     jsl sys_puthex_word
     .as
@@ -1824,10 +1932,10 @@ syscall_table:
 ;;; ------------------------------------
 vector_cop:
 emu_vector_cop:
-    jml >emu_vector_reset       ; RESTART
+    jml >warm_reset             ; RESTART
 
 vector_brk:
-    jml >emu_vector_reset       ; RESTART
+    jml >warm_reset             ; RESTART
     
 emu_vector_nmi  .equ $0
 vector_nmi      .equ $0
