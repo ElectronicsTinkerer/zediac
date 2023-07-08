@@ -92,6 +92,7 @@ enum define mon {
 }
 
 ;;; CPU frequency storage (in kHz)
+cpu_freq_mhz    .equ $fc        ; 16 bits
 cpu_freq_khz    .equ $fe        ; 16 bits
     
 
@@ -209,7 +210,7 @@ _txt_startup:
     .byte "##########################\n"
     .byte "\n"
     .byte "(C) Ray Clemens 2023\n"
-    .byte "Monitor : v1.4 (2023-07-07)\n"
+    .byte "Monitor : v1.5 (2023-07-08)\n"
     .byte "RAM : 512k\n"
     .byte "ROM : 32k\n"
     .byte "CPU : 65816 @ "
@@ -351,7 +352,31 @@ _uart0_cpu_freq:
     asl cpu_freq_khz
     clc
     adc cpu_freq_khz            ; + y*2
-    sta cpu_freq_khz
+    sta cpu_freq_khz            ; kHz calc done
+    
+    lsr                         ; kHz/2
+    lsr                         ; kHz/4
+    lsr                         ; kHz/8
+    pha
+    lsr                         ; kHz/16
+    sta cpu_freq_mhz
+    lsr                         ; khZ/32
+    lsr                         ; kHz/64
+    clc
+    adc cpu_freq_mhz            ; 
+    sta cpu_freq_mhz            ; kHz/16 + kHz/64
+    pla
+    clc
+    adc cpu_freq_mhz
+    sta cpu_freq_mhz            ; kHz/8 + kHz/16 + kHz/64 ~= kHz/5
+    lda cpu_freq_khz
+    sec
+    sbc cpu_freq_mhz            ; 1 - (1/5) = 4/5
+    lsr
+    lsr
+    lsr
+    sta cpu_freq_mhz            ; Done! kHz/10 (ish) -> about 0.4% off
+    
 
     ;; Back to UART initialization
     .as
@@ -1088,8 +1113,8 @@ _txt_args_arg:
     
 ;;; XMODEM transfer RECEIVE command
 ;;; Transferred data is stored in bank 2
-XRECV_NAK_TIMEOUT   .def 3      ; In seconds
-XRECV_BLK_TIMEOUT   .def 1      ; In seconds
+XRECV_NAK_TIMEOUT   .def 3         ; Number of XRECV_BLK_TIMEOUTs to wait before resending NAK
+XRECV_BLK_TIMEOUT   .def 1000      ; In miliseconds
 
 _xrecv:
     .as
@@ -1514,7 +1539,7 @@ _getc_nb_cc:
 ;;; Requirements:
 ;;;   .as
 ;;; Args:
-;;;   X - number of seconds to wait (within some tolerance)
+;;;   X - number of miliseconds to wait (within some tolerance)
 ;;; Uses:
 ;;;   A, X, Y
 ;;; Return:
@@ -1533,7 +1558,7 @@ _gct_delay:
     beq _gct_done
     dex
     phx
-    ldy cpu_freq_khz
+    ldy cpu_freq_mhz
     jsl sys_delay
     plx
     jmp _gct_wait
