@@ -5,10 +5,6 @@ TODO!
 * Revamp build system - how?
 * 0.ffffff only prints 0.f
 * Double check Rx/Tx LED silk labeling
-* v1.4:
-  - memmap: Command not found
-  - [fixed] xrecv crash on command execution
-  - [fixed] args prints two trailing 0 to argc
 
 TODONE!
 
@@ -31,3 +27,7 @@ TODONE!
 * Correct command match when command is 6 chars long
 * Sysclock freq calc & display (save to ZP location for access via a syscall?)
 * Cold reset delay of 0.5s for UART init
+* v1.4:
+  - [fixed] memmap: Command not found
+  - [fixed] xrecv crash on command execution
+  - [fixed] args prints two trailing 0 to argc

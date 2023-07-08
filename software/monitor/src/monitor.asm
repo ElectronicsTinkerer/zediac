@@ -228,39 +228,39 @@ _txt_startup_end:
 
 _cmd_table:
     .word _help
-    .byte _cmd_help_end - $
+    .byte _cmd_help_end - $ - 1
     .byte "help"
 _cmd_help_end:
     .word _clear
-    .byte _cmd_clear_end - $
+    .byte _cmd_clear_end - $ - 1
     .byte "clear"
 _cmd_clear_end:
     .word _args
-    .byte _cmd_args_end - $
+    .byte _cmd_args_end - $ - 1
     .byte "args"
 _cmd_args_end:
     .word _xrecv
-    .byte _cmd_xrecv_end - $
+    .byte _cmd_xrecv_end - $ - 1
     .byte "xrecv"
 _cmd_xrecv_end:
     .word _go
-    .byte _cmd_go_end - $
+    .byte _cmd_go_end - $ - 1
     .byte "go"
 _cmd_go_end:
     .word _gosub
-    .byte _cmd_gosub_end - $
+    .byte _cmd_gosub_end - $ - 1
     .byte "gosub"
 _cmd_gosub_end:
     .word _copy
-    .byte _cmd_copy_end - $
+    .byte _cmd_copy_end - $ - 1
     .byte "copy"
 _cmd_copy_end:
     .word _eeprom
-    .byte _cmd_eeprom_end - $
+    .byte _cmd_eeprom_end - $ - 1
     .byte "ecopy"
 _cmd_eeprom_end:
     .word _memmap
-    .byte _cmd_memmap_end - $
+    .byte _cmd_memmap_end - $ - 1
     .byte "memmap"              ; no zero terminator! -> 6 chars long
 _cmd_memmap_end:
     
@@ -633,7 +633,7 @@ _me_eoc_chk_nxt:
     ;; Increment index to next command entry
     adc cmd_tbl_ptr
     clc
-    adc #2                      ; Skip the jump address
+    adc #2+1                    ; Skip the jump address + the length byte
     sta cmd_tbl_ptr
     cmp #_cmd_table_end         ; Get the end of the table
     .as
