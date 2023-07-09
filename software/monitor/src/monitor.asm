@@ -35,10 +35,10 @@ GETC_LOAD       .def 50_000     ; Clock cycles
 ;;; ------------------------------------
 ;;;  DIRECT PAGE VARIABLES
 ;;; ------------------------------------
-xmon_ascii_line .def 0          ; ASCII temp storage for hex monitor (16 bytes)
+xmon_ascii_line .def 0          ; ASCII temp storage for hex monitor (17 bytes)
 
 enum define syscall {
-    tmp0 = $10,
+    tmp0 = $20,
     tmp1,
     tmp2,
     tmp3,
@@ -57,7 +57,7 @@ enum define syscall {
 }
     
 enum define mon {
-    tmp0 = $20,
+    tmp0 = $30,
     tmp1,
     tmp2,
     tmp3,
@@ -132,6 +132,14 @@ xr_blkptr       .def mon.tmp1   ; 24 bits!
 xr_chksum       .def mon.tmp4   ; 8  bits
 xr_isnext       .def mon.tmp5   ; 8  bits
 xr_retry_num    .def mon.tmp6   ; 8  bits
+xr_init_done    .def mon.tmp7   ; 8  bits
+
+xs_addr_l       .def mon.tmp0   ; 8  bits
+xs_addr_m       .def mon.tmp1   ; 8  bits
+xs_addr_h       .def mon.tmp2   ; 8  bits
+xs_count        .def mon.tmp3   ; 16 bits
+xs_blk          .def mon.tmp5   ; 8  bits
+xs_chksum       .def mon.tmp6   ; 8  bits
 
 copy_s_l        .def mon.tmp0   ; 8  bits
 copy_s_m        .def mon.tmp1   ; 8  bits
@@ -176,12 +184,12 @@ _txt_help:
     .byte " > help                     Display available commands\n"
     .byte " > memmap                   Display the system's memory map\n"
     .byte " > xrecv                    XMODEM receive to address $020000\n"
+    .byte " > xsend aaaaaa cccc        XMODEM send c bytes from address aaaaaa\n"
     .byte " > a.b                      Hexdump from a to b\n"
     .byte " > a:b [c] [...]            Store b at address a\n"
     .byte 0
 _txt_mem_map:
     .byte "Memory map - mirrored across all banks\n"
-    .byte "\n"
     .byte " $0000-$7fff RAM (mirrored every 16 banks)\n"
     .byte " $8000-$800f VIA\n"
     .byte " $8800-$880f UART\n"
@@ -210,7 +218,7 @@ _txt_startup:
     .byte "##########################\n"
     .byte "\n"
     .byte "(C) Ray Clemens 2023\n"
-    .byte "Monitor : v1.6 (2023-07-08)\n"
+    .byte "Monitor : v1.7 (2023-07-08)\n"
     .byte "RAM : 512k\n"
     .byte "ROM : 32k\n"
     .byte "CPU : 65816 @ "
@@ -244,6 +252,10 @@ _cmd_args_end:
     .byte _cmd_xrecv_end - $ - 1
     .byte "xrecv"
 _cmd_xrecv_end:
+    .word _xsend
+    .byte _cmd_xsend_end - $ - 1
+    .byte "xsend"
+_cmd_xsend_end:
     .word _go
     .byte _cmd_go_end - $ - 1
     .byte "go"
@@ -1261,6 +1273,179 @@ _txt_xrecv_wait:
     .byte "Waiting\n",0
 
 
+;;; Send some data via XMODEM
+_xs_expd_arg:
+    pea 0
+    plb
+    pea _txt_xs_arg
+    jsl sys_puts
+    jmp monitor
+_xs_nothex:
+    pea 0
+    plb
+    pea _txt_copy_nx            ; Yes, this is the same message as the COPY one!
+    jsl sys_puts
+    jmp monitor
+_xs_invalid_count:
+    pea 0
+    plb
+    pea _txt_xs_invalc
+    jsl sys_puts
+    jmp monitor
+
+    ;; Actual entry point
+_xsend: 
+    .as
+    .xl
+    sep #$20
+    rep #$10
+    pla                         ; Pull argc off the stack
+    cmp #2
+    bne _xs_expd_arg            ; If argc != 2, error
+    
+    lda #{buf >> 16} & $ff      ; Get buffer's DBR
+    pha                         ; Set program data bank to read off the input stack
+    plb
+    plx                         ; Remove the self-stack pointer
+    ;; At this point, the top of the stack is the pointer to the first arg
+    ;; which is the base address for the send
+    plx                         ; Get arg string pointer
+    pha                         ; Add space for the return value
+    phx
+    jsl sys_parsehex            ; Convert the arg into an address
+    plx                         ; Remove pointer from stack
+    bcc _xs_nothex              ; Not a valid address, error
+    tay                         ; Low word of address
+    sty xs_addr_l
+    pla                         ; Get high byte of address
+    sta xs_addr_h
+    ;; Now get the byte count to send
+    plx                         ; Get arg string pointer
+    pha                         ; Add space for the return value
+    phx
+    jsl sys_parsehex            ; Convert the arg into an address
+    plx                         ; Remove pointer from stack
+    bcc _xs_nothex              ; Not a valid address, error
+    tay                         ; Low word of address
+    sty xs_count
+    dey
+    cpy #$8000                  ; Max send of 32k
+    bcs _xs_invalid_count
+    pla                         ; Balance stack
+
+    ;; "Ready" message
+    pea _txt_xs_init
+    jsl sys_puts
+    plx
+    
+    ;; Wait for NAK
+_xs_start:
+    jsl sys_getc
+    cmp #KEY_EOT                ; ^D
+    bne $+5
+    jmp |_xs_canceled
+    cmp #KEY_NAK
+    bne _xs_start
+    ;; Got start NAK, send a block
+    lda #1                      ; Reset block number
+    sta xs_blk
+_xs_sendblk:
+    lda #KEY_SOH
+    jsl sys_putc
+    lda xs_blk
+    jsl sys_putc
+    eor #$ff                    ; Invert block number
+    jsl sys_putc
+    ldy #0
+    stz xs_chksum
+_xs_sb_loop:
+    lda [xs_addr_l],y           ; Get byte
+    jsl sys_putc                ; Send byte
+    clc                         ; Update checksum
+    adc xs_chksum
+    sta xs_chksum
+    iny                         ; Next address
+    cpy #$80
+    bcc _xs_sb_loop             ; If we haven't send 128 bytes yet, keep going
+
+    jsl sys_putc                ; Send checksum
+
+    ;; Wait for NAK/ACK/CAN
+_xs_blkcfrm:
+    jsl sys_getc
+    cmp #KEY_NAK                ; Resend block on NAK
+    beq _xs_sendblk
+    cmp #KEY_EOT                ; User cancel
+    beq _xs_canceled
+    cmp #KEY_CAN                ; Receiver cancel
+    beq _xs_recv_can
+    cmp #KEY_ACK                ; ACK
+    bne _xs_blkcfrm
+    
+    inc xs_blk
+    lda xs_blk
+    cmp #1
+    beq _xs_eot                 ; If 32k has been sent, we're done
+    .al
+    rep #$20
+    lda xs_addr_l               ; Inc base address
+    clc
+    adc #$80
+    sta xs_addr_l
+    bcc _xs_no_addr_c
+    .as
+    sep #$20
+    inc xs_addr_h
+    .al
+    rep #$20
+_xs_no_addr_c:  
+    lda xs_count                ; Dec count
+    sec
+    sbc #$80
+    sta xs_count
+    beq _xs_eot                 ; <= 0 -> done with transmission
+    bpl _xs_sendblk 
+    ;;  Done with file
+_xs_eot:
+    lda #KEY_EOT                ; Signal end of transmission
+    jsl sys_putc
+_xs_eot_wait:
+    jsl sys_getc                ; Check for ACK
+    cmp #KEY_EOT                ; User cancel
+    beq _xs_canceled
+    cmp #KEY_ACK
+    bne _xs_eot_wait
+    pea _txt_xs_complete
+    jsl sys_puts
+    jmp monitor
+    
+
+_xs_canceled:
+    pea 0
+    plb
+    pea _txt_xs_usercan
+    jsl sys_puts
+    jmp monitor
+_xs_recv_can:
+    pea 0
+    plb
+    pea _txt_xs_recvcan
+    jsl sys_puts
+    jmp monitor
+_txt_xs_arg:
+    .byte "Usage: xsend aaaaaa cccc\n",0
+_txt_xs_init:
+    .byte "Ready. Press ^D<$4> to cancel.\n",0
+_txt_xs_usercan:
+    .byte "Canceled by user.\n",0
+_txt_xs_recvcan:
+    .byte "Canceled by receiver.\n",0
+_txt_xs_complete:
+    .byte "Completed.\n",0
+_txt_xs_invalc:
+    .byte "Invalid count. Must be in range [1..$8000]\n",0
+
+    
 ;;; Perform a block copy of data from RAM to EEPROM
 ;;; Perform a block copy of data
     .al
@@ -1384,10 +1569,9 @@ _cp_eep:
     ldy #_smc_cp                ; To addr
     lda #_smc_cp_eep_eos - _smc_cp_eep - 1
     mvn 0,0
-    jsr _smc_cp
-    ldx #0
-    jmp (reset_ptr,x)           ; Full-on reset since we don't know what state the EEPROM is in
+    jmp _smc_cp
 
+    
 _copy_eep:                      ; Requires destination to be EEPROM
     pea 0
     plb
@@ -1479,8 +1663,9 @@ _smc_cp_eor:
     ldx copy_c_l                ; Get remaining byte count
     dex
     bpl _smc_cp_nxtpg           ; Do next page
-    rts
-_smc_cp_eep_eos:                ; END OF SUB - keep for SMC init
+    ldx #0
+    jmp (reset_ptr,x)
+_smc_cp_eep_eos:                ; END OF ROUTINE - keep for SMC init
 
 
 ;;; ------------------------------------
