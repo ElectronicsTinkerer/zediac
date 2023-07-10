@@ -3,7 +3,6 @@ TODO!
 * Revamp build system - how?
 * 0.ffffff only prints 0.f
 * Double check Rx/Tx LED silk labeling
-* Add memset command (memset dddddd aa cccc)
 
 TODONE!
 
@@ -33,3 +32,4 @@ TODONE!
 * xrecv timeout needs smaller grainularity
 * Add XMODEM file transfer commands (xsend)
 * Add x commands to help menu
+* Add memset command (memset dddddd aa cccc)

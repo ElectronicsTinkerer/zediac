@@ -183,8 +183,9 @@ _txt_help:
     .byte " > gosub xxxxxx             JSL to an address (RTL to MONITOR)\n"
     .byte " > help                     Display available commands\n"
     .byte " > memmap                   Display the system's memory map\n"
+    .byte " > memset aaaaaa bb cccc    Fill c bytes at address a with value b\n"
     .byte " > xrecv                    XMODEM receive to address $020000\n"
-    .byte " > xsend aaaaaa cccc        XMODEM send c bytes from address aaaaaa\n"
+    .byte " > xsend aaaaaa cccc        XMODEM send c bytes from address a\n"
     .byte " > a.b                      Hexdump from a to b\n"
     .byte " > a:b [c] [...]            Store b at address a\n"
     .byte 0
@@ -272,6 +273,10 @@ _cmd_copy_end:
     .byte _cmd_eeprom_end - $ - 1
     .byte "ecopy"
 _cmd_eeprom_end:
+    .word _memset
+    .byte _cmd_memset_end - $ - 1
+    .byte "memset"
+_cmd_memset_end:
     .word _memmap
     .byte _cmd_memmap_end - $ - 1
     .byte "memmap"              ; no zero terminator! -> 6 chars long
@@ -1456,11 +1461,17 @@ _txt_xs_complete:
 _txt_xs_invalc:
     .byte "Invalid count. Must be in range [1..$8000]\n",0
 
-    
+;;; Perform a block memset 
 ;;; Perform a block copy of data from RAM to EEPROM
 ;;; Perform a block copy of data
     .al
     .xl
+_memset:
+    .as
+    sep #$20
+    lda #$40
+    sta copy_mode
+    bne _cp
 _eeprom:
     .as
     sep #$20
@@ -1505,6 +1516,10 @@ _copy_args:
     cpx #$9                     ; Parsed 3 args yet? (3 * (3 bytes each) == 9)
     bcc _copy_args
 
+    lda #0                      ; Restore bank
+    pha
+    plb
+    
     ;; Do some sanity checks on the user's input data
     ldx copy_c_l                ; Byte count
     beq _copy_size              ; Can't copy 0 bytes
@@ -1513,6 +1528,7 @@ _copy_args:
     
     bit copy_mode               ; If eeprom write, do some special stuff
     bmi _cp_eep
+    bvs _cp_memset
     
     jsl sys_memcpy_init         ; Set up SMC
 
@@ -1535,7 +1551,13 @@ _copy_args:
     jmp monitor
 
 _copy_expd_arg:                 ; Expected an argument
+    bit copy_mode               ; If eeprom write, do some special stuff
+    bvs _cp_ea_memset
     pea _txt_copy_help
+    bra _cp_ea
+_cp_ea_memset:
+    pea _txt_copy_ms_help
+_cp_ea: 
     jsl sys_puts
     jmp monitor
 
@@ -1548,8 +1570,6 @@ _copy_nothex:                   ; Expected a hex val
     jmp monitor
     
 _copy_noeep:                    ; Can't copy TO eeprom
-    pea 0
-    plb
     pea _txt_copy_ne
     .as
     sep #$20
@@ -1557,10 +1577,22 @@ _copy_noeep:                    ; Can't copy TO eeprom
     jmp monitor
     
 _copy_size:                     ; Copy size out of range
-    pea 0
-    plb
     pea _txt_copy_size
     jsl sys_puts
+    jmp monitor
+
+    .as
+_cp_memset:                     ; Small sanity check, not very effective
+    ldy copy_s_l                ; Destination address (memset uses a different arg order, intuitively)
+    cpy #ROM_BASE
+    bcs _copy_ms_noeep          ; Can't write to EEPROM
+
+    lda copy_d_l                ; Get value to fill memory with
+    ldy copy_c_l                ; Get count
+_cp_ms_loop:
+    dey
+    sta [copy_s_l],y            ; Save value
+    bne _cp_ms_loop
     jmp monitor
 
 _cp_eep:
@@ -1584,21 +1616,24 @@ _cp_eep:
 
     
 _copy_eep:                      ; Requires destination to be EEPROM
-    pea 0
-    plb
     pea _txt_copy_eep
     jsl sys_puts
     jmp monitor
 
 _copy_feep:                     ; Can't copy from EEPROM to EEPROM
-    pea 0
-    plb
     pea _txt_copy_feep
     jsl sys_puts
     jmp monitor
 
+_copy_ms_noeep:                 ; Can't write (memset) TO eeprom
+    pea _txt_copy_ms_ne
+    jsl sys_puts
+    jmp monitor
+    
 _txt_copy_help:
-    .byte "Usage: copy ssssss dddddd cccc\n",0
+    .byte "Usage: e/copy ssssss dddddd cccc\n",0
+_txt_copy_ms_help:
+    .byte "Usage: memset dddddd vv cccc\n",0
 _txt_copy_nx:
     .byte "Arguments must be valid hex addresses.\n",0
 _txt_copy_ne:
@@ -1608,8 +1643,9 @@ _txt_copy_eep:
 _txt_copy_feep:
     .byte "Cannot `ecopy` from EEPROM to EEPROM. (Addr range [$C000..$FFFF])\n",0
 _txt_copy_size:
-    .byte "Valid e/copy count: [1..$8000]\n",0
-
+    .byte "Valid e/copy/memset count: [1..$8000]\n",0
+_txt_copy_ms_ne:
+    .byte "Cannot `memset` EEPROM. (Addr range [$C000..$FFFF])\n",0
     
 _smc_cp         .equ smc_base1
 
