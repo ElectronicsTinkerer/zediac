@@ -218,7 +218,7 @@ _txt_startup:
     .byte "##########################\n"
     .byte "\n"
     .byte "(C) Ray Clemens 2023\n"
-    .byte "Monitor : v1.7.3 (2023-07-10)\n"
+    .byte "Monitor : v1.7.4 (2023-07-10)\n"
     .byte "RAM : 512k\n"
     .byte "ROM : 32k\n"
     .byte "CPU : 65816 @ "
@@ -341,7 +341,11 @@ warm_reset:
     lda #$13                    ; Set DTR and RTS, enable loopback (for selftest)
     sta UART0_MCR
     ;; As it turns out, writing to the FCR does not always reset the Tx and Rx FIFOS (yay hardware)
-    ;; So to improve the chance of the following test succeeding, we will manually drain the Rx FIFO:
+    ;; So to improve the chance of the following test succeeding, we will manually drain the Rx FIFO.
+    ;; First, we set up a dummy timeout for the CPU frequency (since we don't know what it is yet):
+    ldx #1                      ; 1MHz "dummy"
+    stx cpu_freq_mhz
+    ;; Then we can call getc with a timeout
     ldx #50                     ; 50 ms wait
     jsl sys_getc_to             ; Attempt to get char
     bcs $-7                     ; If char is available, read another
