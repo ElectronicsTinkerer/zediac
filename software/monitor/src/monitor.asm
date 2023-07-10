@@ -218,7 +218,7 @@ _txt_startup:
     .byte "##########################\n"
     .byte "\n"
     .byte "(C) Ray Clemens 2023\n"
-    .byte "Monitor : v1.7 (2023-07-08)\n"
+    .byte "Monitor : v1.7.3 (2023-07-10)\n"
     .byte "RAM : 512k\n"
     .byte "ROM : 32k\n"
     .byte "CPU : 65816 @ "
@@ -340,6 +340,12 @@ warm_reset:
     sta UART0_FCR
     lda #$13                    ; Set DTR and RTS, enable loopback (for selftest)
     sta UART0_MCR
+    ;; As it turns out, writing to the FCR does not always reset the Tx and Rx FIFOS (yay hardware)
+    ;; So to improve the chance of the following test succeeding, we will manually drain the Rx FIFO:
+    ldx #50                     ; 50 ms wait
+    jsl sys_getc_to             ; Attempt to get char
+    bcs $-7                     ; If char is available, read another
+    
     lda #'A'                    ; Test value
     sta UART0_THR               ; TIMER START
 
@@ -543,10 +549,8 @@ _me_rm_wspc:
     cpx xsav                    ; End of line = no command present
     bcs _mon_prompt
     lda buf,x                   ; Get char from line
-    cmp #' '
-    beq _me_rm_wspc             ; Is a space
-    cmp #'\t'
-    beq _me_rm_wspc             ; Is a tab
+    cmp #' '+1                  ; Check to see if it is whitespace
+    bcc _me_rm_wspc             ; Yes
     stx line_start              ; Save the starting position of the command
     
     ;; Parse line. Jumps to a command after tokenizing the remainder of the line.
@@ -1270,7 +1274,7 @@ _xr_nak_jmp:                    ; Range extension
     jmp _xr_nak
 
 _txt_xrecv_wait:
-    .byte "Waiting\n",0
+    .byte "Waiting. Press ^C<$3> to cancel.\n",0
 
 
 ;;; Send some data via XMODEM
@@ -1403,18 +1407,21 @@ _xs_no_addr_c:
     sec
     sbc #$80
     sta xs_count
+    .as
+    sep #$20
     beq _xs_eot                 ; <= 0 -> done with transmission
     bpl _xs_sendblk 
     ;;  Done with file
 _xs_eot:
     lda #KEY_EOT                ; Signal end of transmission
     jsl sys_putc
-_xs_eot_wait:
     jsl sys_getc                ; Check for ACK
     cmp #KEY_EOT                ; User cancel
     beq _xs_canceled
     cmp #KEY_ACK
-    bne _xs_eot_wait
+    bne _xs_eot                 ; If not a valid ACK, resend EOT
+    pea 0
+    plb                         ; Don't care about stack imbalance since MONITOR will reset it for us
     pea _txt_xs_complete
     jsl sys_puts
     jmp monitor
