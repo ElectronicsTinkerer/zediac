@@ -1,10 +1,9 @@
 TODO!
 
-* Add XMODEM file transfer commands (xsend)
-* Add x commands to help menu
 * Revamp build system - how?
 * 0.ffffff only prints 0.f
 * Double check Rx/Tx LED silk labeling
+* Add memset command (memset dddddd aa cccc)
 
 TODONE!
 
@@ -32,3 +31,5 @@ TODONE!
   - [fixed] xrecv crash on command execution
   - [fixed] args prints two trailing 0 to argc
 * xrecv timeout needs smaller grainularity
+* Add XMODEM file transfer commands (xsend)
+* Add x commands to help menu
