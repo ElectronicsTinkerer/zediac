@@ -202,10 +202,11 @@ _txt_mem_map:
     .byte " $c000-$ffff ROM (A23 determines low/high 16k)\n"
     .byte "\n"
     .byte "Interrupts:\n"
-    .byte " COP/BRK jump to reset vector\n"
-    .byte " ABT     rti\n"
-    .byte " NMI     $0000\n"
-    .byte " IRQ     $0080\n"
+    .byte " ABT rti\n"
+    .byte " NMI $0000\n"
+    .byte " IRQ $0080\n"
+    .byte " BRK $0100\n"
+    .byte " COP $0180\n"
     .byte 0
 _txt_startup:
     .byte "^[[2J^[[H" // Clear screen
@@ -219,7 +220,7 @@ _txt_startup:
     .byte "##########################\n"
     .byte "\n"
     .byte "(C) Ray Clemens 2023\n"
-    .byte "Monitor : v1.7.4 (2023-07-10)\n"
+    .byte "Monitor : v1.7.6 (2023-07-10)\n"
     .byte "RAM : 512k\n"
     .byte "ROM : 32k\n"
     .byte "CPU : 65816 @ "
@@ -299,10 +300,15 @@ emu_vector_reset:
     ldy #3000
     jsl sys_delay               ; The UART says it needs about 0.5s to reset after power up
     
-warm_reset: 
+warm_reset:
+    .as
+    sep #$20
     sei                         ; Disable IRQs
     clc                         ; Switch to native mode
     xce
+    lda #0                      ; Set up data bank
+    pha
+    plb
     
     .xl
     .al
@@ -310,9 +316,15 @@ warm_reset:
     lda #direct_page            ; Set direct page to just above stack
     tcd
     stz cpu_freq_khz            ; Reset CPU frequency counter
-    
+
+    lda #warm_reset             ; Set up COP and BRK vectors in memory
+    sta vector_brk+1
+    sta vector_cop+1
     .as
     sep #$20                    ; 8-bit mode
+    lda #$4c                    ; jmp abs opcode
+    sta vector_brk
+    sta vector_cop
 
     ;; Initialize VIA to inputs
     stz VIA0_DDRB
@@ -2207,12 +2219,10 @@ syscall_table:
 ;;; ------------------------------------
 ;;;  INTERRUPT HANDLERS
 ;;; ------------------------------------
-vector_cop:
-emu_vector_cop:
-    jml >warm_reset             ; RESTART
+vector_cop      .equ $180
+emu_vector_cop  .equ $180
 
-vector_brk:
-    jml >warm_reset             ; RESTART
+vector_brk      .equ $100
     
 emu_vector_nmi  .equ $0
 vector_nmi      .equ $0
