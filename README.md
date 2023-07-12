@@ -14,10 +14,10 @@
 * 5+ MHz operation
 * Partial system bus expansion header with address decoding
 * USB-C UART interface via a CP2102
-* 2 power delivery methods (unregulated vin via barrel jack or terminal block. Also power over USB)
+* 2 power delivery methods (unregulated voltage in via barrel jack or terminal block. Also power over USB)
 * ESD protection on all IO headers
 
 ## Software
 
-All software is available in the `software` directory. At the moment, there is only a system monitor which is (hopefully) nearing completion.
+All software is available in the `software` directory. At the moment, there is a system monitor which provides many memory manipulation utilities.
 
