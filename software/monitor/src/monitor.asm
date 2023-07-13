@@ -245,7 +245,7 @@ _txt_startup:
     .byte "##########################\n"
     .byte "\n"
     .byte "(C) Ray Clemens 2023\n"
-    .byte "Monitor : v1.7.7 (2023-07-12)\n"
+    .byte "Monitor : v1.7.8 (2023-07-12)\n"
     .byte "RAM : 512k\n"
     .byte "ROM : 32k\n"
     .byte "CPU : 65816 @ "
@@ -517,6 +517,8 @@ _uart0_init_good:
 ;;; 
 monitor:
     sei                         ; Disable IRQs
+    clc                         ; Ensure we're in native mode
+    xce
     .xl
     .al
     rep #$30
