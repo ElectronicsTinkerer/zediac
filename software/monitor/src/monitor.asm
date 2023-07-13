@@ -17,10 +17,6 @@
 #include "../inc/keyboard.inc"    
 ;; #include "../inc/macros.inc"
     
-;;; ROM Size & base address
-    .rom ROM_SIZE
-    .org ROM_BASE
-
 smc_base0       .equ $7c00
 smc_base1       .equ $7c80
 arg_stack       .equ $7d00         
@@ -153,6 +149,35 @@ copy_c_h        .def mon.tmp8   ; 8  bits (written to but unused)
 copy_xy         .def mon.tmp9   ; 16 bits
 copy_mode       .def mon.tmp11  ; 8  bits
 
+;;; ------------------------------------
+;;;  ROM SIZE AND BASE
+;;; ------------------------------------
+    .rom ROM_SIZE
+    .org ROM_BASE
+
+;;; ------------------------------------
+;;;  SYSCALL TABLE
+;;; ------------------------------------
+;;; SYSCALLS can be accessed by loading
+;;; X with the syscall index then simulating
+;;; a jsl (syscall_table,x) instruction.
+;;; Alternatively, (a slightly less portable
+;;; method is to) just jsl to the syscall
+;;; subroutine name
+syscall_table: 
+    .word sys_delay
+    .word sys_puthex
+    .word sys_putdec
+    .word sys_puthex_word
+    .word sys_putdec_word
+    .word sys_putc
+    .word sys_puts
+    .word sys_getc
+    .word sys_getc_nb
+    .word sys_getc_to
+    .word sys_parsehex
+    .word sys_memcpy_init
+    .word sys_memcpy
 
 ;;; ------------------------------------
 ;;;  TEXT BANK
@@ -220,7 +245,7 @@ _txt_startup:
     .byte "##########################\n"
     .byte "\n"
     .byte "(C) Ray Clemens 2023\n"
-    .byte "Monitor : v1.7.6 (2023-07-10)\n"
+    .byte "Monitor : v1.7.7 (2023-07-12)\n"
     .byte "RAM : 512k\n"
     .byte "ROM : 32k\n"
     .byte "CPU : 65816 @ "
@@ -1063,6 +1088,10 @@ _gs:
     pea _gs_jml+2
 _gs_jml:    
     jmp [gs_addr_l + direct_page]
+    .as
+    sep #$20                    ; Print return value
+    clc
+    jsl sys_putdec
     jmp monitor                 ; Used for the jsl case
 
 _gs_expd_arg:
@@ -2190,30 +2219,6 @@ _sys_ph_lval:
     lda s_px_l
     rtl
 
-
-;;; ------------------------------------
-;;;  SYSCALL TABLE
-;;; ------------------------------------
-;;; SYSCALLS can be accessed by loading
-;;; X with the syscall index then simulating
-;;; a jsl (syscall_table,x) instruction.
-;;; Alternatively, (a slightly less portable
-;;; method is to) just jsl to the syscall
-;;; subroutine name
-syscall_table: 
-    .word sys_delay
-    .word sys_puthex
-    .word sys_putdec
-    .word sys_puthex_word
-    .word sys_putdec_word
-    .word sys_putc
-    .word sys_puts
-    .word sys_getc
-    .word sys_getc_nb
-    .word sys_getc_to
-    .word sys_parsehex
-    .word sys_memcpy_init
-    .word sys_memcpy
 
     
 ;;; ------------------------------------
