@@ -1,5 +1,5 @@
 
-SRC_DIR = src
+SRC_DIR = .
 BUILD_DIR = build
 
 SRC    = curses.asm
