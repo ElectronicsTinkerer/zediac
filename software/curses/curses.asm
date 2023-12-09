@@ -5,6 +5,7 @@
 ;;;
 ;;; Updates:
 ;;; 2023-12-07: Created file
+;;; 2023-12-08: Added debug test
 ;;;
 
 #include "../monitor/zediac-inc-1.7.8.inc"
@@ -23,6 +24,27 @@ getch_timeout   .equ $81            ; 16 bits - in ms
     .rom $1000
     .org $001000
 
+    ;; BEIGN DEBUG
+    .as
+    .xl
+    sep #$20
+    rep #$10
+    lda #0                      ; Set the DBR to a known value
+    pha
+    plb
+    
+    ldx #14
+    ldy #14
+    jsl cur_movexy              ; Print a test string
+    pea _dummy_text
+    jsl sys_puts
+    ply
+    rtl
+
+_dummy_text:
+    .byte "HELLO, WORLD!",0
+    ;; END DEBUG
+    
 ;;; ------------------------------------
 ;;;  TEXT BANK
 ;;; ------------------------------------
@@ -55,31 +77,13 @@ _txt_backspace:
     .byte "\b^[[K",0            ; Back up one char then delete at cursor
 _txt_move:
     .byte "^[[",0               ; Set up cursor movement
+_txt_home:
+    .byte "^[[H",0              ; Set cursor to (0,0)
     
     
 ;;; ------------------------------------
 ;;;  LIBRARY FUNCTIONS
 ;;; ------------------------------------
-
-;;; Clear the screen and home cursor to (0,0)
-;;; Requirements:
-;;;   .xl
-;;;   .as
-;;; Args:
-;;;   NONE
-;;; Uses:
-;;;   A, Y
-;;; Return:
-;;;   NONE
-;;; 
-    .xl
-    .as
-cur_clear:
-    pea _txt_clr_scrn
-    jsl sys_puts
-    ply
-    rtl
-    
 
 ;;; Turn off attributes and set normal mode
 ;;; Requirements:
@@ -303,6 +307,46 @@ cur_clrattr_inv:
     rtl
 
     
+;;; Clear the screen and home cursor to (0,0)
+;;; Requirements:
+;;;   .xl
+;;;   .as
+;;; Args:
+;;;   NONE
+;;; Uses:
+;;;   A, Y
+;;; Return:
+;;;   NONE
+;;; 
+    .xl
+    .as
+cur_clear:
+    pea _txt_clr_scrn
+    jsl sys_puts
+    ply
+    rtl
+
+
+;;; Home cursor to (0,0)
+;;; Requirements:
+;;;   .xl
+;;;   .as
+;;; Args:
+;;;   NONE
+;;; Uses:
+;;;   A, Y
+;;; Return:
+;;;   NONE
+;;; 
+    .xl
+    .as
+cur_home:
+    pea _txt_home
+    jsl sys_puts
+    ply
+    rtl
+
+
 ;;; Set cursor position to (X,Y)
 ;;; Requirements:
 ;;;   .xl
