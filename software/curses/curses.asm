@@ -369,11 +369,13 @@ cur_movexy:
     ply                         ; Get line number
     tya                         ; Don't care about upper 8 bits
     phx
+    clc                         ; Don't print leading 0's
     jsl sys_putdec              ; Print line number
     lda #';'
     jsl sys_putc
     plx                         ; Get column number
     txa
+    clc                         ; Don't print leading 0's
     jsl sys_putdec
     lda #'H'                    ; End the curses function
     jsl sys_putc
