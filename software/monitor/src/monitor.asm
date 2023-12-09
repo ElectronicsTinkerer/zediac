@@ -1956,7 +1956,7 @@ _smc_mc_eos:                    ; END OF SUB - keep for _memcpy_init
 ;;; Args:
 ;;;   C - The word to print (DESTRUCTIVE)
 ;;; Uses:
-;;;   X
+;;;   NONE
 ;;; Return:
 ;;;   .as - C will be short!
 sys_puthex_word:
