@@ -17,12 +17,16 @@
 NUM_VOICES      .def 4
 BEATS_PER_VOICE .def 256
 BEATS_TO_PRINT  .def 16
+NUM_WAVEFORMS   .def 5          ; Number of available waveforms per voice
     
 ;;; ------------------------------------
 ;;;  DIRECT PAGE VARIABLES
 ;;; ------------------------------------
 
-beat_index      .equ $c0         ; 8  bits - BOOL
+beat_index      .equ $c0        ; 8  bits - Current beat
+selected_voice  .equ $c1        ; 16 bits - Currently selected voice
+                                ;    Doesn't need 16 bits, but the reduces
+                                ;    the rep/sep'ing needed
     
 ;;; ------------------------------------
 ;;;  STATIC VARIABLES
@@ -33,6 +37,7 @@ beats           .equ $4000      ; One page of 256 bytes per voice
                                 ; 0 = note off
 voice_wave_type .equ beats + {BEATS_PER_VOICE * NUM_VOICES}
                                 ; Stores the waveform index for each voice
+                                ; NUM_VOICES bytes in length
     
 
 ;;; ------------------------------------
@@ -60,13 +65,13 @@ _txt_eol:
 _txt_title_bar:
     .byte "             Z-TRACKER (C) Ray Clemens 2023            ",0
 _txt_track:
-    .byte "| TRACK ",0
+    .byte " TRACK ",0
 _txt_nonote:
     .byte "            |",0
 _txt_wavetable:
     .byte "="                   ; Square wave
-    .byte "<"                   ; Right saw
-    .byte ">"                   ; Left saw
+    .byte "/"                   ; Right saw
+    .byte "\\"                  ; Left saw
     .byte "^"                   ; Triangle
     .byte "#"                   ; Noise
 
@@ -109,18 +114,25 @@ t_main_loop:
     jsl cur_getch
     bcc t_main_loop             ; No key, just loop again
     cmp #KEY_ESC                ; EXIT?
-    beq t_exit                  ; Yes
+    beq t_exit
     cmp #'~'                    ; FULL RESET?
-    beq t_init                  ; Yes
+    beq t_init
     cmp #'r'                    ; Refresh display?
-    beq t_refresh               ; Yes
+    beq t_refresh
     cmp #'['                    ; Back up the beat index?
     beq backup
     cmp #']'                    ; Next beat index?
     beq frontup
-    
+    cmp #'w'                    ; Cycle waveform?
+    beq cycle_waveform
+    cmp #'}'                    ; Move to next voice?
+    beq nextvoice
+    cmp #'{'                    ; Move to previous voice?
+    beq prevvoice
+        
     jmp t_main_loop
 
+;;; Full quit back to MONITOR
 t_exit:
     pea _txt_vis_cur            ; Turn back on cursor
     jsl sys_puts
@@ -128,6 +140,7 @@ t_exit:
     lda #0                      ; User-generated exit
     rtl
 
+;;; Move to previous beat
 backup:
     lda <beat_index
     ;; beq t_main_loop             ; Don't decrement a 0 index!
@@ -135,11 +148,49 @@ backup:
     sta <beat_index
     bra t_main_loop
 
+;;; Move to next beat
 frontup:
     lda <beat_index
     ;; cmp #$ff                    ; Don't overflow index!
     inc
     sta <beat_index
+    bra t_main_loop
+
+;;; Cycle waveform for currently selected voice
+cycle_waveform:
+    .xs
+    sep #$10
+    ldx <selected_voice         ; Get current voice number
+    lda voice_wave_type, x
+    inc
+    cmp #NUM_WAVEFORMS          ; Does this need to wrap?
+    bcc cw_nowrap
+    lda #0                      ; Reset
+cw_nowrap:
+    sta voice_wave_type, x
+    .xl
+    rep #$10
+    bra t_main_loop
+
+;;; Move currently active voice to next
+nextvoice:
+    lda <selected_voice
+    inc
+    cmp #NUM_VOICES
+    bcc nv_store                ; No wrap, just save next number
+    lda #0
+nv_store:
+    sta <selected_voice
+    bra t_main_loop
+
+;;; Move currently active voice to previous
+prevvoice:
+    lda <selected_voice
+    dec
+    bpl pv_store                ; No wrap, just save next number
+    lda #NUM_VOICES - 1
+pv_store:
+    sta <selected_voice
     bra t_main_loop
 
     
@@ -181,14 +232,20 @@ print_status_bar:
     .xl
     .as
 print_tracks:
-    ;; Move to second line
+    ;; Move to third line
     ldx #3
-    ldy #2
+    ldy #3
     jsl cur_movexy
     
     ;; Print track headers
     ldx #0                      ; Track index
 pt_head:
+    lda #'|'                    ; Start of column
+    jsl sys_putc
+    cpx <selected_voice         ; If this is the selected voice, bold the text
+    bne pt_h_nosel
+    jsl cur_setattr_inv
+pt_h_nosel:
     pea _txt_track
     jsl sys_puts
     ply
@@ -196,11 +253,16 @@ pt_head:
     jsl sys_puthex
     lda #' '
     jsl sys_putc
+    .xs
+    sep #$10
     ldy voice_wave_type, x      ; Get wave type
     lda _txt_wavetable, y       ; Get symbol for wave type
     jsl sys_putc
+    .xl
+    rep #$10
     lda #' '
     jsl sys_putc
+    jsl cur_clrattr_inv         ; Disable bold
     inx
     cpx #NUM_VOICES             ; Check if all the voices are printed
     bne pt_head
@@ -208,7 +270,6 @@ pt_head:
     lda #'|'                    ; End of track column marker
     jsl sys_putc
 
-    
     ;; Outer loop: iterate over beats
     lda <beat_index             ; Get current beat
     cmp #{BEATS_TO_PRINT / 2}   ; Is this beat before the middle of the display?
@@ -292,7 +353,11 @@ pt_ti_next:
     .as
 tracker_reset_all:
     ;; Reset beat number
-    stz beat_index
+    stz <beat_index
+
+    ;; Reset currently selected voice
+    stz <selected_voice
+    stz <selected_voice+1
     
     ;; Clear beat array
     ldx #BEATS_PER_VOICE * NUM_VOICES

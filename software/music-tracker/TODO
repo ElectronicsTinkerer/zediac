@@ -1,0 +1,12 @@
+# TODO
+
+* Printing of notes
+* Adjustment of tempo (press '<' and '>')
+  - This will need a range limit!
+* Timer and outputing of notes to a memory mapped device
+* Play start/stop (space)
+
+# TODONE
+
+* Variables for user's X, Y position
+* Setting of waveform (just press 'w' to cycle through them)
