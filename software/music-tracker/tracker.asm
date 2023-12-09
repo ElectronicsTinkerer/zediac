@@ -10,6 +10,18 @@
 #include "../curses/build/curses.sym"
 #include "../monitor/inc/keyboard.inc"
 
+;;; SOME NOTES (about notes)
+;;;
+;;; Notes are stored in a single byte bitfield organized as:
+;;; 7 654 3 210
+;;; |  |  |  |
+;;; |  |  |  +-> Note (1-7) representing C-B
+;;; |  |  +----> 1 = sharp, 0 = no accidental
+;;; |  +-------> Octave (0-7)
+;;; +----------> [UNUSED]
+;;;
+    
+
 ;;; ------------------------------------
 ;;;  CONSTANTS
 ;;; ------------------------------------
@@ -18,7 +30,11 @@ NUM_VOICES      .def 4
 BEATS_PER_VOICE .def 256
 BEATS_TO_PRINT  .def 16
 NUM_WAVEFORMS   .def 5          ; Number of available waveforms per voice
-    
+
+NOTE_ACCI_MASK  .def $08
+NOTE_NOTE_MASK  .def $07
+NOTE_OCTA_MASK  .def $70
+
 ;;; ------------------------------------
 ;;;  DIRECT PAGE VARIABLES
 ;;; ------------------------------------
@@ -27,6 +43,10 @@ beat_index      .equ $c0        ; 8  bits - Current beat
 selected_voice  .equ $c1        ; 16 bits - Currently selected voice
                                 ;    Doesn't need 16 bits, but the reduces
                                 ;    the rep/sep'ing needed
+loop_beat       .equ $c3        ; 8  bits - Where to jump to on a loop
+
+tmp0            .equ $d0        ; 8  bits - temporary storage (assume
+                                ;    overriten by any sub)
     
 ;;; ------------------------------------
 ;;;  STATIC VARIABLES
@@ -129,6 +149,7 @@ t_main_loop:
     beq nextvoice
     cmp #'{'                    ; Move to previous voice?
     beq prevvoice
+    jsr parse_note              ; Might be a note, process that
         
     jmp t_main_loop
 
@@ -194,6 +215,97 @@ pv_store:
     bra t_main_loop
 
     
+;;; Parse a single key and if it's a valid
+;;; Requirements:
+;;;   .xl
+;;;   .as
+;;; Args:
+;;;   A - the ASCII keycode of the note
+;;; Uses:
+;;;   A, X
+;;; Return:
+;;;   NONE
+;;;
+    .xl
+    .as
+parse_note:
+    pha
+    ;; Calculate beat address location
+    lda #0
+    xba
+    lda <beat_index             ; Beat offset
+    .al
+    .xs
+    rep #$20
+    sep #$10
+    ;; Multiply BEATS_PER_VOICE by the voice number
+    ldx <selected_voice         ; Get current voice
+pn_note_idxl:
+    beq pn_note_offs
+    clc
+    adc #BEATS_PER_VOICE
+    dex
+    bra pn_note_idxl
+pn_note_offs:   
+    .xl
+    rep #$10
+    tax                         ; X now includes the offset into the beat array
+                                ; for the current beat and voice
+    .as
+    sep #$20
+    pla
+
+    ;; Perform key parsing
+    cmp #'#'                    ; Sharp?
+    bne pn_not_note             ; Nope
+    ;;  Toggle sharp bit
+    lda beats, x
+    eor #NOTE_ACCI_MASK         ; Toggle
+    sta beats, x
+    rts
+    
+pn_not_note:    
+    cmp #'0'                    ; A < '0' ?
+    bcc pn_done                 ; Not a valid note
+    cmp #'7'+1                  ; Valid octave?
+    bcs pn_note                 ; No
+    ;; Valid octave, enter it
+    asl                         ; Shift bits to octave position
+    asl
+    asl
+    asl
+    and #NOTE_OCTA_MASK         ; Get just the octave
+    pha
+    lda beats, x                ; Get beat
+    and #~NOTE_OCTA_MASK        ; Clear octave
+    sta tmp0                    ; Save for later
+    pla
+    ora tmp0
+    sta beats, x                ; Save result
+    rts
+
+pn_note:
+    ;; Check if this is a valid note
+    and #$5f                    ; Ignore case
+    cmp #'A'                    ; LT = invalid
+    bcc pn_done                 ; invalid
+    cmp #'G'+1                  ; LT = valid
+    bcs pn_done
+    ;; Valid note, put it in the beat
+    pha
+    lda beats, x                ; Get beat
+    and #~NOTE_NOTE_MASK        ; Clear note
+    sta tmp0                    ; Save for later
+    pla
+    and #NOTE_NOTE_MASK         ; Get just the note
+    ora tmp0
+    and #~NOTE_ACCI_MASK        ; Remove accidental
+    sta beats, x                ; Save result
+    
+pn_done:
+    rts
+
+
 ;;; Print the status bar across the top of the UI
 ;;; Requirements:
 ;;;   .xl
@@ -279,16 +391,16 @@ pt_start_nz:
     ldx #0
     sec
     sbc #{BEATS_TO_PRINT / 2}   ; Offset to keep current beat vertically centered
-    pha
+    pha                         ; Save changed beat index
 pt_beats:
     pea _txt_eol                ; Newline
     jsl sys_puts
     ply
     
-    pla                         ; Get beat number
+    pla                         ; Get beat number (after shift)
     cmp <beat_index             ; If this is the current beat, higilight line
     bne pt_beatnum
-    pha
+    pha                         ; Continue to save beat number
     jsl cur_setattr_inv
     pla
 pt_beatnum: 
@@ -296,16 +408,24 @@ pt_beatnum:
     jsl sys_puthex              ; Print beat number
     iny
     tya
-    pha
+    pha                         ; Save beat number for later outer iterations
     
     lda #'|'
     jsl sys_putc
     
     ;; Inner loop: Iterate over tracks
-    txy
-pt_ti:  
+    lda #0                      ; Get the current beat (after modification)
+    xba
+    pla
+    pha
+    tay
+    dey
+pt_ti:
     lda beats, y                ; Get beat data
+    pha
+    and #NOTE_NOTE_MASK
     bne pt_ti_prnote            ; Non-zero = print note
+    pla
     phy
     pea _txt_nonote             ; Zero = blank entry
     jsl sys_puts
@@ -314,7 +434,20 @@ pt_ti:
     ply
     bra pt_ti_next
 pt_ti_prnote:
-    ;; TODO: figure out how to print a note!
+    lda #' '
+    jsl sys_putc
+    pla
+    jsr prnote                  ; Print the note (3 chars wide)
+    phy
+    ldy #7                      ; Print a few spaces
+    lda #' '
+pt_ti_pn_l:
+    jsl sys_putc
+    dey
+    bpl pt_ti_pn_l
+    lda #'|'                    ; End of column
+    jsl sys_putc
+    ply
 pt_ti_next: 
     .al                         ; Get next voice beat table
     rep #$20
@@ -338,7 +471,7 @@ pt_ti_next:
     rts
     
 
-;;; Clear all tracker data
+;;; Clear all tracker data (INIT)
 ;;; Requirements:
 ;;;   .xl
 ;;;   .as
@@ -358,6 +491,9 @@ tracker_reset_all:
     ;; Reset currently selected voice
     stz <selected_voice
     stz <selected_voice+1
+
+    ;; Reset loop target beat
+    stz loop_beat
     
     ;; Clear beat array
     ldx #BEATS_PER_VOICE * NUM_VOICES
@@ -373,3 +509,45 @@ _tr_loop_v:
     dex
     bpl _tr_loop_v
     rts
+
+
+;;; Print a note as a string
+;;; Requirements:
+;;;   .xl
+;;;   .as
+;;; Args:
+;;;   A - The note to print
+;;; Uses:
+;;;   A
+;;; Return:
+;;;   NONE
+;;;
+    .xl
+    .as
+prnote:
+    pha
+    ;; Print note
+    and #NOTE_NOTE_MASK         ; Just get the note
+    ora #$40                    ; Map to ASCII character
+    jsl sys_putc
+    ;; Followed by sharps
+    pla
+    pha
+    and #NOTE_ACCI_MASK         ; Accidental?
+    beq prn_nacci               ; Nope!
+    lda #'#'                    ; Yep
+    bra prn_acci
+prn_nacci:
+    lda #'-'
+prn_acci:
+    jsl sys_putc
+    ;; And finally, the octave
+    pla
+    lsr
+    lsr
+    lsr
+    lsr
+    ora #'0'                    ; Map to '0'-'7'
+    jsl sys_putc
+    rts
+    
