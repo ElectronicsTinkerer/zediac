@@ -22,7 +22,7 @@ getch_timeout   .equ $81            ; 16 bits - in ms
 ;;; ------------------------------------
     
     .rom $1000
-    .org $001000
+    .org $1000
 
     ;; BEIGN DEBUG
     .as
@@ -383,6 +383,7 @@ cur_movexy:
 ;;; Attempt to read a key and if there is one available, return it
 ;;; Requirements:
 ;;;   .as
+;;;   .xl - Only required if timeout > 255 ms
 ;;; Args:
 ;;;   NONE
 ;;; Uses:
@@ -398,13 +399,14 @@ cur_getch:
                                 ; to branch based on the timeout but it should
                                 ; (possibly) reduce some overhead from the
                                 ; sys_getc_to function.
-    jsl sys_getc_nb             ; Nonblocking timeout, only check once
+    jsl sys_getc                ; Wait for key
     bra _cur_gch_echochk
 
 _cur_gch_to:
     jsl sys_getc_to             ; Timeout is in X, wait for character
     
-_cur_gch_echochk:   
+_cur_gch_echochk:
+    pha
     lda <do_echo
     beq _cur_gch_done           
     ;; php
@@ -412,6 +414,7 @@ _cur_gch_echochk:
                                 ; then echo the character
     ;; plp
 _cur_gch_done:  
+    pla
     rtl        
     
 
