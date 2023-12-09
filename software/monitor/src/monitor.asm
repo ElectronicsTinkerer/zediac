@@ -9,6 +9,8 @@
 ;;; 2023-05-16: Add VIA and UART initialization
 ;;; 2023-06-03: Implement basic IO and print utilities; start monitor prompt
 ;;; 2023-06-09: Update symbols to make use of new .def SLIME support
+;;; ****-**-**: Forgot to update this header
+;;; 2023-12-09: Bumped UART baud rate from 115200 to 912600 (8x)
 ;;;
 
 #include "../inc/syscalls.inc"
@@ -245,7 +247,7 @@ _txt_startup:
     .byte "##########################\n"
     .byte "\n"
     .byte "(C) Ray Clemens 2023\n"
-    .byte "Monitor : v1.7.8 (2023-07-12)\n"
+    .byte "Monitor : v1.7.9 (2023-12-09)\n"
     .byte "RAM : 512k\n"
     .byte "ROM : 32k\n"
     .byte "CPU : 65816 @ "
@@ -446,7 +448,8 @@ _uart0_cpu_freq:
 _uart0_init_good: 
     lda #$80                    ; Switch to divisor register access 
     sta UART0_LCR
-    lda #8                      ; Set BAUD to 115200 (clock in is 8 * 1.8432MHz)
+    ;; lda #8                      ; Set BAUD to 115200 (clock in is 8 * 1.8432MHz)
+    lda #1                      ; Set BAUD to 921600 (clock in is 8 * 1.8432MHz)
     sta UART0_DLL               ; Low byte
     lda #0
     sta UART0_DLM               ; High byte
