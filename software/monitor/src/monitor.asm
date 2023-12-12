@@ -11,6 +11,9 @@
 ;;; 2023-06-09: Update symbols to make use of new .def SLIME support
 ;;; ****-**-**: Forgot to update this header
 ;;; 2023-12-09: Bumped UART baud rate from 115200 to 912600 (8x)
+;;; 2023-12-10: Added 'load' and 'run' commands; Switch versioning to
+;;;             semantic versioning 2.0.0 -> This release: 1.8.0
+;;; 2023-12-11: Completed functionality of 'load'
 ;;;
 
 #include "../inc/syscalls.inc"
@@ -26,6 +29,8 @@ arg_stack       .equ $7d00
 direct_page     .equ $7f00
 buf             .equ $010000    ; Input line buffer
 xrecv_buf       .equ $020000    ; XMODEM receive / send buffer base
+                                ; MUST BE LOCATED ON A BANK FOR THE LOAD
+                                ; ROUTINE TO FUNCTION
 
     
 GETC_LOAD       .def 50_000     ; Clock cycles
@@ -151,6 +156,12 @@ copy_c_h        .def mon.tmp8   ; 8  bits (written to but unused)
 copy_xy         .def mon.tmp9   ; 16 bits
 copy_mode       .def mon.tmp11  ; 8  bits
 
+load_count_l    .def mon.tmp0   ; 8  bits
+load_count_h    .def mon.tmp1   ; 8  bits
+load_addr_l     .def $40        ; 8  bits (start address)
+load_addr_m     .def $41        ; 8  bits
+load_addr_h     .def $42        ; 8  bits
+
 ;;; ------------------------------------
 ;;;  ROM SIZE AND BASE
 ;;; ------------------------------------
@@ -209,8 +220,10 @@ _txt_help:
     .byte " > go xxxxxx                JML to an address\n"
     .byte " > gosub xxxxxx             JSL to an address (RTL to MONITOR)\n"
     .byte " > help                     Display available commands\n"
+    .byte " > load                     Copy data loaded with 'xrecv' to address(es)\n"
     .byte " > memmap                   Display the system's memory map\n"
     .byte " > memset aaaaaa bb cccc    Fill c bytes at address a with value b\n"
+    .byte " > run                      JSL to last 'load'd address\n"
     .byte " > xrecv                    XMODEM receive to address $020000\n"
     .byte " > xsend aaaaaa cccc        XMODEM send c bytes from address a\n"
     .byte " > a.b                      Hexdump from a to b\n"
@@ -247,7 +260,7 @@ _txt_startup:
     .byte "##########################\n"
     .byte "\n"
     .byte "(C) Ray Clemens 2023\n"
-    .byte "Monitor : v1.7.9 (2023-12-09)\n"
+    .byte "Monitor : v1.8.0 (2023-12-11)\n"
     .byte "RAM : 512k\n"
     .byte "ROM : 32k\n"
     .byte "CPU : 65816 @ "
@@ -307,8 +320,16 @@ _cmd_eeprom_end:
 _cmd_memset_end:
     .word _memmap
     .byte _cmd_memmap_end - $ - 1
-    .byte "memmap"              ; no zero terminator! -> 6 chars long
+    .byte "memmap"
 _cmd_memmap_end:
+    .word _load
+    .byte _cmd_load_end - $ - 1
+    .byte "load"
+_cmd_load_end:
+    .word _run
+    .byte _cmd_run_end - $ - 1
+    .byte "run"
+_cmd_run_end:
     
 _cmd_table_end:                 ; Keep me! Used to determine number of entries in table
 
@@ -343,6 +364,10 @@ warm_reset:
     lda #direct_page            ; Set direct page to just above stack
     tcd
     stz cpu_freq_khz            ; Reset CPU frequency counter
+    lda #{emu_vector_reset & $ffff} ; Init "RUN" address
+    sta load_addr_l
+    lda #{{emu_vector_reset >> 16} & $ff}
+    sta load_addr_h
 
     lda #warm_reset             ; Set up COP and BRK vectors in memory
     sta vector_brk+1
@@ -1088,6 +1113,7 @@ _gs:
     ;; Check the mode that we're in
     bit gs_mode
     bmi _gs_jml
+_gs_dojsl:                      ; USED BY ANY OTHER COMMANDS (RUN)
     ;; Simulate a jsl [gs_addr_l]
     phk
     pea _gs_jml+2
@@ -1761,6 +1787,112 @@ _smc_cp_eor:
 _smc_cp_eep_eos:                ; END OF ROUTINE - keep for SMC init
 
 
+;;; LOAD in data from the xrecv base address
+;;; Data "block" format:
+;;; CL CH AL AM AH <DATA>
+;;;
+;;; CL-CH: Number of bytes in block (not including the header bytes)
+;;; AL-AH: Base address to copy data to
+;;; 
+    .al
+    .xl
+_load:
+    .as
+    sep #$20
+    .xl
+    rep #$10
+
+    jsl sys_memcpy_init         ; Set up memory copy routine
+
+    ldx #0
+    .al
+    rep #$20
+_load_blk_loop: 
+    ;; Read byte count
+    lda xrecv_buf, x
+    beq _load_done              ; 0 bytes = done
+    sta <load_count_l           ; Save for later
+    tay
+
+    dec                         ; Check size of copy
+    bmi _load_inval_size
+    
+    .as
+    sep #$20
+    inx                         ; Go past count bytes
+    inx
+    ;; Read base address
+    lda xrecv_buf, x            ; Copy address to local pointer
+    sta <load_addr_l            ; Also update the "last loaded address" pointer
+    inx
+    lda xrecv_buf, x            ; Copy address to local pointer
+    sta <load_addr_m            ; Also update the "last loaded address" pointer
+    inx
+    lda xrecv_buf, x            ; Copy address to local pointer
+    sta <load_addr_h            ; Also update the "last loaded address" pointer
+    inx
+    ;; Do the data copy.
+    phx                         ; Save X
+    phy                         ; (S) Number of bytes to copy
+                                ; X: Source bank address
+    ldy <load_addr_l            ; Y: Destination bank address
+    xba                         ; B: Destination bank
+    lda #{{xrecv_buf >> 16} & $ff}  ; A: Source bank
+    jsl sys_memcpy
+    ply                         ; Restore stack balance
+    .al
+    rep #$20
+    pla                         ; Resore Y (the source bank address)
+    clc
+    adc <load_count_l
+    tax
+    jmp _load_blk_loop          ; Yes -> Get next block
+
+_load_done: 
+    jmp monitor
+
+_load_inval_size:
+    .as
+    sep #$20
+    pea _txt_load_size1         ; First part of the message
+    jsl sys_puts
+    ply
+    .al
+    rep #$20
+    lda load_count_l
+    jsl sys_puthex_word         ; Copy count
+    .as
+    sep #$20
+    pea _txt_load_size2         ; Second part of message
+    jsl sys_puts
+    ply
+    .al
+    rep #$20
+    txa
+    jsl sys_puthex_word         ; Index of offending count value
+    jmp monitor
+    
+_txt_load_size1:
+    .byte "Valid load count: [1..$8000]\n"
+    .byte "Encountered value of $",0
+_txt_load_size2:                ; Need sys_printf (!)
+    .byte " at index $",0
+
+
+;;; RUN loaded binary code, jumps to last LOAD's address
+    .al
+    .xl
+_run:
+    ;;  Copy the target address to gosub's pointer
+    lda <load_addr_l
+    sta <gs_addr_l
+    .as
+    sep #$20
+    lda <load_addr_h
+    sta <gs_addr_h
+    jmp _gs_dojsl               ; Go to JSL for GOSUB
+    
+
 ;;; ------------------------------------
 ;;;  UTILITY FUNCTIONS
 ;;; ------------------------------------
@@ -1942,7 +2074,7 @@ _smc_memcpy:
     lda 5,s                     ; Get byte count
     dea                         ; MVN uses C+1 as the byte transfer count
 _smc_mc_mvn:
-    mvn 0,0                     ; Banks modified sta's above
+    mvn 0,0                     ; Banks modified by sta's above
     .as
     sep #$20
     plb
