@@ -8,7 +8,7 @@
 ;;; 2023-12-08: Added debug test
 ;;;
 
-#include "../monitor/zediac-inc-1.7.8.inc"
+#include "../monitor/zediac-inc-1.8.0.inc"
 
 ;;; ------------------------------------
 ;;;  DIRECT PAGE VARIABLES
@@ -21,9 +21,15 @@ getch_timeout   .equ $81            ; 16 bits - in ms
 ;;;  LIBRARY LOAD BASE
 ;;; ------------------------------------
     
-    .rom $1000
-    .org $1000
+    .org $7000
+    
+    ;; BEGIN LOADER BLOCK
+    .word __REGION_1_END - __REGION_1_BEGIN
+    .word __REGION_1_BEGIN & $ffff
+    .byte {__REGION_1_BEGIN >> 16} & $ff
+    ;; END LOADER BLOCK
 
+__REGION_1_BEGIN:
     ;; BEIGN DEBUG
     .as
     .xl
@@ -469,4 +475,6 @@ cur_echo_off:
     ;; Probably should also bve a macro ...
     stz <do_echo
     rtl
+
+__REGION_1_END:
 
