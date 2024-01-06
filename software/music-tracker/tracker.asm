@@ -1,15 +1,23 @@
 ;;;
-;;;  ZEDIAC CURSES IMPLEMENTATION
+;;;  ZEDIAC MUSIC TRACKER
 ;;;
 ;;; (C) Ray Clemens 2023
 ;;;
 ;;; Updates:
 ;;; 2023-12-08: Created file
+;;; 2023-12-09: Note interface implementated
+;;; 2023-12-29: Update to use new SLIME begin/end link blocks
 ;;;
 
 #include "../curses/build/curses.sym"
 #include "../monitor/inc/keyboard.inc"
 
+;;; HW DEVICE
+SOUND_V0    .equ $a000
+SOUND_V1    .equ $a004
+SOUND_V2    .equ $a008
+SOUND_V3    .equ $a00c
+    
 ;;; SOME NOTES (about notes)
 ;;;
 ;;; Notes are stored in a single byte bitfield organized as:
@@ -35,6 +43,10 @@ NOTE_ACCI_MASK  .def $08
 NOTE_NOTE_MASK  .def $07
 NOTE_OCTA_MASK  .def $70
 
+DEFAULT_TEMPO   .def 120        ; BPM
+MIN_TEMPO       .def 30         ; BPM
+MAX_TEMPO       .def 200        ; BPM
+
 ;;; ------------------------------------
 ;;;  DIRECT PAGE VARIABLES
 ;;; ------------------------------------
@@ -44,6 +56,9 @@ selected_voice  .equ $c1        ; 16 bits - Currently selected voice
                                 ;    Doesn't need 16 bits, but the reduces
                                 ;    the rep/sep'ing needed
 loop_beat       .equ $c3        ; 8  bits - Where to jump to on a loop
+tempo           .equ $c4        ; 8  bits - Tempo in BPM
+is_playing      .equ $c5        ; 8  bits - VOLATILE BOOL !0 = running, 0 = paused
+tempo_div       .equ $c6        ; 8  bits - VOLATILE - used to divide NMI interrupt freq
 
 tmp0            .equ $d0        ; 8  bits - temporary storage (assume
                                 ;    overriten by any sub)
@@ -64,9 +79,72 @@ voice_wave_type .equ beats + {BEATS_PER_VOICE * NUM_VOICES}
 ;;;  APPLICATION LOAD BASE
 ;;; ------------------------------------
     
-    .rom $1000
-    .org $0000                 ; TODO: Change this back to a reasonable address (and the DBR in the init too!
+    ;; .org 0                      ; For assembler
 
+    .begin $0000 "nmi-handler"
+    ;; BEGIN LOADER BLOCK
+    ;; .word __REGION_2_END - __REGION_2_BEGIN
+    ;; .word 0
+    ;; .byte 0
+    ;; END LOADER BLOCK
+    
+;;; Put NMI handler here
+
+__REGION_2_BEGIN:
+    pha
+    phx
+    php
+    .as 
+    .xs
+    sep #$30
+    lda VIA0_T1CL               ; Clear interrupt
+    inc tempo_div               ; Only write out notes every 256 NMIs
+    beq nmi_notes
+    plp
+    plx
+    pla
+    rti
+
+nmi_notes:
+    lda <is_playing             ; If not playing, don't do anything
+    beq nmi_cleanup
+    
+    ldx <beat_index
+    lda beats, x                ; Get beat note
+    tax
+    .xl
+    .al
+    rep #$30
+    ;;  TODO: some divider
+    sta SOUND_V0
+
+    ;; Now set all the waveforms
+    ldx #0
+nmi_waves:  
+    lda voice_wave_type
+    sta SOUND_V0+2
+    inx
+    inx
+    inx
+    inx
+    bne nmi_waves
+    inc beat_index
+nmi_cleanup:    
+    plp
+    plx
+    pla
+    rti
+__REGION_2_END:
+    .end "nmi-handler"
+
+    .begin $ "music-tracker"
+    ;; BEGIN LOADER BLOCK
+    .word __REGION_1_END - __REGION_1_BEGIN
+    .word __REGION_1_BEGIN & $ffff
+    .byte {__REGION_1_BEGIN >> 16} & $ff
+    ;; END LOADER BLOCK
+    
+__REGION_1_BEGIN:
 entry:
     .as
     .xl
@@ -86,6 +164,12 @@ _txt_title_bar:
     .byte "             Z-TRACKER (C) Ray Clemens 2023            ",0
 _txt_track:
     .byte " TRACK ",0
+_txt_play:
+    .byte "PLAYING",0
+_txt_pause:
+    .byte "PAUSED ",0
+_txt_tempo:
+    .byte "Tempo: ",0
 _txt_nonote:
     .byte "            |",0
 _txt_wavetable:
@@ -95,7 +179,7 @@ _txt_wavetable:
     .byte "^"                   ; Triangle
     .byte "#"                   ; Noise
 
-    ;; DEV-LEVEL?
+    ;; TODO: MOVE THIS TO THE CURSES LIB!
 _txt_inv_cur:
     .byte "^[[?25l",0           ; Invisible cursor
 _txt_vis_cur:
@@ -105,7 +189,6 @@ _txt_vis_cur:
 ;;;  FUNCTIONS
 ;;; ------------------------------------
 
-
 ;;; MAIN ENTRY POINT!
     .as
     .xl
@@ -113,9 +196,32 @@ tracker:
     ;; Curses setup
     jsl cur_clear               ; Clear screen
     jsl cur_echo_off            ; Disable character echo
-    ldx #0
-    jsl cur_set_to              ; Wait forever for a key
+    ldx #1
+    jsl cur_set_to              ; Wait for a key
 
+    ;;  Reset tempo and is_playing for "safety"
+    stz is_playing
+    lda #DEFAULT_TEMPO
+    sta tempo
+    
+    lda #%11000000              ; Enable T1 interrupts
+    sta VIA0_IER
+    lda #%01000000              ; Free running T1 mode, disable PB7,
+                                ; no input latching on A or B
+    sta VIA0_ACR
+
+    .al
+    rep #$20
+    lda #61416                  ; Jiffy timer = 120 BPM
+    sta VIA0_T1LL               ; VIA0 T1 TCL/TCH
+
+    .as
+    sep #$20
+    
+    ;; By default, don't reset just in case something goes wrong
+    ;; you might be able to recover your song
+    jmp t_refresh
+    
     ;; Tracker datastructure setup
 t_init: 
     jsr tracker_reset_all
@@ -124,18 +230,19 @@ t_refresh:
     pea _txt_inv_cur            ; Shut off cursor
     jsl sys_puts
     ply
-    jsr print_status_bar        ; Do 'da tin
+    jsr print_title             ; Do 'da tin
 
     ;; Main event loop
 t_main_loop:
+    jsr print_status_info
     jsr print_tracks
 
     ;;  Handle input events
     jsl cur_getch
     bcc t_main_loop             ; No key, just loop again
-    cmp #KEY_ESC                ; EXIT?
+    cmp #'~'                    ; EXIT?
     beq t_exit
-    cmp #'~'                    ; FULL RESET?
+    cmp #'`'                    ; FULL RESET?
     beq t_init
     cmp #'r'                    ; Refresh display?
     beq t_refresh
@@ -149,6 +256,13 @@ t_main_loop:
     beq nextvoice
     cmp #'{'                    ; Move to previous voice?
     beq prevvoice
+    cmp #'<'                    ; Decrease tempo?
+    beq dectempo
+    cmp #'>'                    ; Increase tempo?
+    beq inctempo
+    cmp #' '                    ; Start playback?
+    beq toggle_play
+    
     jsr parse_note              ; Might be a note, process that
         
     jmp t_main_loop
@@ -158,7 +272,8 @@ t_exit:
     pea _txt_vis_cur            ; Turn back on cursor
     jsl sys_puts
     ply
-    lda #0                      ; User-generated exit
+    lda #0                      ; User-generated
+    sta VIA0_IER                ; Disable interrupts
     rtl
 
 ;;; Move to previous beat
@@ -212,7 +327,43 @@ prevvoice:
     lda #NUM_VOICES - 1
 pv_store:
     sta <selected_voice
-    bra t_main_loop
+    jmp t_main_loop
+
+    
+;;; Increment tempo
+inctempo:
+    lda <tempo
+    inc
+    cmp #MAX_TEMPO+1
+    beq $+3
+    sta <tempo
+    jsr set_tempo
+    jmp t_main_loop
+
+;;; Decrement tempo
+dectempo:
+    lda <tempo
+    dec
+    cmp #MIN_TEMPO-1
+    beq $+3
+    sta <tempo
+    jsr set_tempo
+    jmp t_main_loop
+
+toggle_play:
+    lda <is_playing
+    beq tp_start
+    stz <is_playing             ; Stop playback
+    stz VIA0_IER                ; Disable timer
+    jmp t_main_loop
+tp_start:
+    lda #1                      ; Start playback
+    sta <is_playing
+    jsr set_tempo
+    jmp t_main_loop
+
+t_mloop_goto:                   ; Extend branch range
+    jmp t_main_loop
 
     
 ;;; Parse a single key and if it's a valid
@@ -319,7 +470,7 @@ pn_done:
 ;;;
     .xl
     .as
-print_status_bar:
+print_title:
     jsl cur_home                ; Top left of screen
     jsl cur_standend            ; Clear attributes
     jsl cur_setattr_inv         ; Invert text
@@ -327,6 +478,52 @@ print_status_bar:
     jsl sys_puts
     ply                         ; Correct stack
     jsl cur_clrattr_inv         ; Clear inversion
+    rts
+
+
+;;; Print the tempo and other status information
+;;; Requirements:
+;;;   .xl
+;;;   .as
+;;; Args:
+;;;   NONE
+;;; Uses:
+;;;   A, X, Y
+;;; Return:
+;;;   NONE
+;;;
+    .xl
+    .as
+print_status_info:
+    ldx #3
+    ldy #2
+    jsl cur_movexy
+
+    lda <is_playing
+    beq psi_not_play
+    pea _txt_play
+    jsl sys_puts
+    ply                         ; Correct stack
+    bra psi_2
+
+psi_not_play:
+    pea _txt_pause
+    jsl sys_puts
+    ply                         ; Correct stack
+
+psi_2:  
+    lda #' '
+    jsl sys_putc
+    
+    pea _txt_tempo
+    jsl sys_puts
+    ply                         ; Correct stack
+
+    lda <tempo
+    clc                         ; No leading 0's
+    jsl sys_putdec
+    lda #' '
+    jsl sys_putc
     rts
 
     
@@ -418,8 +615,8 @@ pt_beatnum:
     xba
     pla
     pha
+    dec
     tay
-    dey
 pt_ti:
     lda beats, y                ; Get beat data
     pha
@@ -459,7 +656,8 @@ pt_ti_next:
     sep #$20
 
     cpy #{BEATS_PER_VOICE * NUM_VOICES}
-    bmi pt_ti                   ; Not doen with entries, do next voice
+    beq $+4
+    bcc pt_ti                   ; Not doen with entries, do next voice
     
     ;; Done with line, set up next outer loop
     jsl cur_clrattr_inv         ; Make sure that inversion is not carried to next line
@@ -494,6 +692,10 @@ tracker_reset_all:
 
     ;; Reset loop target beat
     stz loop_beat
+
+    ;; Reset tempo
+    lda #DEFAULT_TEMPO
+    sta <tempo
     
     ;; Clear beat array
     ldx #BEATS_PER_VOICE * NUM_VOICES
@@ -550,4 +752,40 @@ prn_acci:
     ora #'0'                    ; Map to '0'-'7'
     jsl sys_putc
     rts
+
+
+;;; Update the VIA timer with the current tempo
+;;; Requirements:
+;;;   .xl
+;;;   .as
+;;; Args:
+;;;   NONE
+;;; Uses:
+;;;   X
+;;; Return:
+;;;   NONE
+;;;
+    .as
+    .xl
+set_tempo:
+    lda #%11000000              ; Enable T1 interrupts
+    sta VIA0_IER
+    lda <tempo                  ; Get clock divider from table
+    .al
+    rep #$20
+    and #$00ff
+    asl
+    tax
+    lda tempos, x
+    sta VIA0_T1CL
+    sta VIA0_T1LL
+    .as
+    sep #$20
+    rts
+
+    
+#include "tempos.inc"
+
+__REGION_1_END:
+    .end "music-tracker"
     

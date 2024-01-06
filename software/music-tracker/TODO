@@ -1,14 +1,6 @@
 # TODO
 
-** MENTAL STATE **
-Last beat of track 0 is F#0? - mightnotfix
-** END MENTAL STATE **
-
-* Printing of notes
-* Adjustment of tempo (press '<' and '>')
-  - This will need a range limit!
 * Timer and outputing of notes to a memory mapped device
-* Play start/stop (space)
 * Loop display ('[' and ']' at beginning of loop lines
 * Loop line toggle?
 
@@ -18,3 +10,8 @@ Last beat of track 0 is F#0? - mightnotfix
 * Setting of waveform (just press 'w' to cycle through them)
 * FIX: It seems the display is entering beats in the voice # *2
 * FIX: Entering octaves clears note
+* FIX: Last beat of track 0 is F#0? - mightnotfix
+* Printing of notes
+* Adjustment of tempo (press '<' and '>')
+  - This will need a range limit!
+* Play start/stop (space)
