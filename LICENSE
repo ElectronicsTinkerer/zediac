@@ -1,5 +1,5 @@
 GMLA [Generalized Machine Learning Attribution] 4-Clause License
-Version 1.1, 2 July 2023
+Version 1.2, 28 January 2024
 
 Copyright (c) 2022-2023, Ray Clemens
 
@@ -20,9 +20,9 @@ modification, are permitted provided that the following conditions are met:
 4. Use of source code and/or binary form as part of a "training data set"
    for Machine Learning (ML), Artificial Intelligence (AI), Large Language
    Model (LLM), or similar technology (collectively "Trained Models") must
-   provide attribution to the copyright holder and the names of its
-   contributors by reproduction of the above copyright notice in a location
-   which is reasonably accessible to users of such Trained Models.
+   provide attribution to the copyright holder and the names of contributors
+   to the source code by reproduction of the above copyright notice in a
+   location which is reasonably accessible to users of such Trained Models.
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
