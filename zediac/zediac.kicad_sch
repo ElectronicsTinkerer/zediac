@@ -9,7 +9,7 @@
 		(date "2023-07-02")
 		(rev "1.1")
 		(company "Electronics Tinkerer")
-		(comment 1 "(C) Ray Clemens 2022-2023")
+		(comment 1 "(C) Ray Clemens 2022-2024")
 	)
 	(lib_symbols
 		(symbol "74xx:74HC00"
