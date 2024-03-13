@@ -74,7 +74,7 @@
     "ssh_key": ""
   },
   "meta": {
-    "filename": "zediac-template.kicad_prl",
+    "filename": "zediac-template-template.kicad_prl",
     "version": 3
   },
   "project": {
