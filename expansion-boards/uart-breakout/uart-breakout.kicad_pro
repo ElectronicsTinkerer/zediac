@@ -469,7 +469,7 @@
     "pinned_symbol_libs": []
   },
   "meta": {
-    "filename": "zediac.kicad_pro",
+    "filename": "uart-breakout.kicad_pro",
     "version": 1
   },
   "net_settings": {
@@ -520,7 +520,7 @@
     "last_paths": {
       "gencad": "",
       "idf": "",
-      "netlist": "",
+      "netlist": "../../../../../",
       "plot": "",
       "pos_files": "",
       "specctra_dsn": "",

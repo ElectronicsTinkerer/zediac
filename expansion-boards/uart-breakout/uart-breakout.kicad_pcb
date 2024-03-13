@@ -237,7 +237,7 @@
 		(property ki_fp_filters "LED* LED_SMD:* LED_THT:*")
 		(path "/4b01f3a4-3325-423d-8d1a-333ea11dd0f9")
 		(sheetname "Root")
-		(sheetfile "zediac-template.kicad_sch")
+		(sheetfile "uart-breakout.kicad_sch")
 		(attr through_hole)
 		(fp_line
 			(start -1.29 -1.545)
@@ -466,7 +466,7 @@
 		(property ki_fp_filters "R_*")
 		(path "/814b57b4-0055-4347-b401-d89bdcb68c92")
 		(sheetname "Root")
-		(sheetfile "zediac-template.kicad_sch")
+		(sheetfile "uart-breakout.kicad_sch")
 		(attr through_hole)
 		(fp_line
 			(start 0.54 -1.37)
@@ -738,7 +738,7 @@
 		(property ki_fp_filters "MountingHole*Pad*")
 		(path "/6f692bad-85ca-4c18-b726-a9c1f7c01f44")
 		(sheetname "Root")
-		(sheetfile "zediac-template.kicad_sch")
+		(sheetfile "uart-breakout.kicad_sch")
 		(attr exclude_from_pos_files)
 		(fp_circle
 			(center 0 0)
@@ -852,7 +852,7 @@
 		(property ki_fp_filters "MountingHole*Pad*")
 		(path "/cea4748c-6d2d-4633-98b5-6fee26e30e0f")
 		(sheetname "Root")
-		(sheetfile "zediac-template.kicad_sch")
+		(sheetfile "uart-breakout.kicad_sch")
 		(attr exclude_from_pos_files)
 		(fp_circle
 			(center 0 0)
@@ -966,7 +966,7 @@
 		(property ki_fp_filters "MountingHole*Pad*")
 		(path "/d8bb28dd-0576-4704-aa28-5218d73069e2")
 		(sheetname "Root")
-		(sheetfile "zediac-template.kicad_sch")
+		(sheetfile "uart-breakout.kicad_sch")
 		(attr exclude_from_pos_files)
 		(fp_circle
 			(center 0 0)
@@ -1080,7 +1080,7 @@
 		(property ki_fp_filters "MountingHole*Pad*")
 		(path "/74b871ce-841d-4c28-8989-66ec74dfcdb1")
 		(sheetname "Root")
-		(sheetfile "zediac-template.kicad_sch")
+		(sheetfile "uart-breakout.kicad_sch")
 		(attr exclude_from_pos_files)
 		(fp_circle
 			(center 0 0)
@@ -1194,7 +1194,7 @@
 		(property ki_fp_filters "CP_*")
 		(path "/dc2adbc5-68e5-4bb8-8ab6-2bb139adb7de")
 		(sheetname "Root")
-		(sheetfile "zediac-template.kicad_sch")
+		(sheetfile "uart-breakout.kicad_sch")
 		(attr through_hole)
 		(fp_circle
 			(center 1.75 0)
@@ -1339,7 +1339,7 @@
 		(property ki_fp_filters "MountingHole*Pad*")
 		(path "/080fd7be-1111-4ec5-93c4-ae2c77f0bc4c")
 		(sheetname "Root")
-		(sheetfile "zediac-template.kicad_sch")
+		(sheetfile "uart-breakout.kicad_sch")
 		(attr exclude_from_pos_files)
 		(fp_circle
 			(center 0 0)
@@ -1453,7 +1453,7 @@
 		(property ki_fp_filters "CP_*")
 		(path "/264c8020-e27a-441a-8cfc-a557037553d9")
 		(sheetname "Root")
-		(sheetfile "zediac-template.kicad_sch")
+		(sheetfile "uart-breakout.kicad_sch")
 		(attr through_hole)
 		(fp_circle
 			(center 1.75 0)
@@ -1597,7 +1597,7 @@
 		)
 		(path "/c6ab306e-e6a9-4bf2-b543-654c4f8e78f7")
 		(sheetname "Root")
-		(sheetfile "zediac-template.kicad_sch")
+		(sheetfile "uart-breakout.kicad_sch")
 		(attr exclude_from_pos_files)
 		(fp_poly
 			(pts
@@ -1870,7 +1870,7 @@
 		(property ki_fp_filters "Connector*:*_2x??_*")
 		(path "/f77506d6-4915-4488-8b60-c5b5d4b3d1d5")
 		(sheetname "Root")
-		(sheetfile "zediac-template.kicad_sch")
+		(sheetfile "uart-breakout.kicad_sch")
 		(attr through_hole)
 		(fp_line
 			(start -3.87 29.27)
@@ -2396,7 +2396,7 @@
 		(property ki_fp_filters "MountingHole*Pad*")
 		(path "/0a166f52-eed7-4ae0-8061-ea0aeff043ae")
 		(sheetname "Root")
-		(sheetfile "zediac-template.kicad_sch")
+		(sheetfile "uart-breakout.kicad_sch")
 		(attr exclude_from_pos_files)
 		(fp_circle
 			(center 0 0)
