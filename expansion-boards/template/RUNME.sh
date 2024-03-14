@@ -8,8 +8,7 @@
 TEMPLATE_NAME="zediac-template"
 NEW_NAME="$1"
 
-sed -i "s/$TEMPLATE_NAME/$NEW_NAME/g" "$TEMPLATE_NAME".*
-
+sed -i "s/$TEMPLATE_NAME\.kicad_/$NEW_NAME\.kicad_/g" "$TEMPLATE_NAME".kicad_*
 
 echo "$TEMPLATE_NAME -> $NEW_NAME"
 j=*
