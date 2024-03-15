@@ -10,4 +10,5 @@ software/test
 _autosave*
 *.csv
 *.xml
-
+*.kicad_sch.lck
+*.kicad_pcb.lck
