@@ -177,7 +177,7 @@
 		(descr "LED, diameter 5.0mm, 2 pins, http://cdn-reichelt.de/documents/datenblatt/A500/LL-504BC2E-009.pdf")
 		(tags "LED diameter 5.0mm 2 pins")
 		(property "Reference" "D4"
-			(at 5.334 0 270)
+			(at 5.334 0 -90)
 			(layer "F.SilkS")
 			(uuid "cc37cee3-3520-44a9-9dbe-d953ddaa62a0")
 			(effects
@@ -417,7 +417,7 @@
 			)
 		)
 		(property "Value" "330"
-			(at 3.81 0 360)
+			(at 3.81 0 0)
 			(layer "F.SilkS")
 			(uuid "f9e7706b-61a8-4c82-98d5-db4958a0770a")
 			(effects
@@ -629,7 +629,7 @@
 			(uuid "77716a6c-aaa1-4350-9066-01ca8d4a9c90")
 		)
 		(fp_text user "${REFERENCE}"
-			(at 3.81 0 360)
+			(at 3.81 0 0)
 			(layer "F.Fab")
 			(uuid "828c7387-9f41-4493-862b-f9e27dd4889f")
 			(effects
