@@ -5,8 +5,8 @@
 	(uuid "66a26b62-9544-494f-a4ed-13e8e346800a")
 	(paper "User" 599.999 399.999)
 	(title_block
-		(title "ZEDIAC Expansion Card Template")
-		(date "2024-03-10")
+		(title "ZEDIAC Uart Expansion Card")
+		(date "2024-03-16")
 		(rev "1.1")
 		(company "Electronics Tinkerer")
 		(comment 1 "(C) Ray Clemens 2022-2024")
