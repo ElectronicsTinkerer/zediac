@@ -525,7 +525,7 @@
       "plot": "",
       "pos_files": "",
       "specctra_dsn": "",
-      "step": "outputs/uart-breakout.step",
+      "step": "output/uart-breakout.step",
       "svg": "",
       "vrml": ""
     },
