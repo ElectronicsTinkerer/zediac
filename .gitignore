@@ -2,6 +2,7 @@
 gerb
 svg
 software/test
+output
 
 # Files
 *.zip
