@@ -522,7 +522,7 @@
       "gencad": "",
       "idf": "",
       "netlist": "../../../../../",
-      "plot": "",
+      "plot": "gerb",
       "pos_files": "",
       "specctra_dsn": "",
       "step": "output/uart-breakout.step",
