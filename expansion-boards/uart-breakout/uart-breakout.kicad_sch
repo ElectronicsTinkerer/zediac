@@ -4509,7 +4509,7 @@
 						)
 					)
 				)
-				(pin tri_state line
+				(pin tri_state inverted
 					(at 12.7 -5.08 180)
 					(length 5.08)
 					(name "Q7"
@@ -4527,7 +4527,7 @@
 						)
 					)
 				)
-				(pin tri_state line
+				(pin tri_state inverted
 					(at 12.7 -2.54 180)
 					(length 5.08)
 					(name "Q6"
@@ -4545,7 +4545,7 @@
 						)
 					)
 				)
-				(pin tri_state line
+				(pin tri_state inverted
 					(at 12.7 0 180)
 					(length 5.08)
 					(name "Q5"
@@ -4563,7 +4563,7 @@
 						)
 					)
 				)
-				(pin tri_state line
+				(pin tri_state inverted
 					(at 12.7 2.54 180)
 					(length 5.08)
 					(name "Q4"
@@ -4581,7 +4581,7 @@
 						)
 					)
 				)
-				(pin tri_state line
+				(pin tri_state inverted
 					(at 12.7 5.08 180)
 					(length 5.08)
 					(name "Q3"
@@ -4599,7 +4599,7 @@
 						)
 					)
 				)
-				(pin tri_state line
+				(pin tri_state inverted
 					(at 12.7 7.62 180)
 					(length 5.08)
 					(name "Q2"
@@ -4617,7 +4617,7 @@
 						)
 					)
 				)
-				(pin tri_state line
+				(pin tri_state inverted
 					(at 12.7 10.16 180)
 					(length 5.08)
 					(name "Q1"
@@ -4635,7 +4635,7 @@
 						)
 					)
 				)
-				(pin tri_state line
+				(pin tri_state inverted
 					(at 12.7 12.7 180)
 					(length 5.08)
 					(name "Q0"
@@ -9825,16 +9825,6 @@
 			(type default)
 		)
 		(uuid "323cbc96-a2d0-4954-8f5c-478c9aad43aa")
-	)
-	(wire
-		(pts
-			(xy 205.74 213.36) (xy 207.01 213.36)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "329886a9-7312-479d-8a15-55e5510756e2")
 	)
 	(wire
 		(pts

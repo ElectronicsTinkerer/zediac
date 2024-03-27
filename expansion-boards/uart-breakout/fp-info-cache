@@ -1,4 +1,4 @@
-10182236185900
+34137611229196
 Audio_Module
 Reverb_BTDR-1H
 Digital Reverberation Unit, http://www.belton.co.kr/inc/downfile.php?seq=17&file=pdf (footprint from http://www.uk-electronic.de/PDF/BTDR-1.pdf)
@@ -94738,6 +94738,13 @@ Varistor VF
 2
 2
 custom_footprints
+BatteryHolder_Keystone_1291_9V
+1x9V battery holder, Keystone P/N 1291, https://www.keyelco.com/product-pdf.cfm?p=1291
+9V battery cell holder
+0
+2
+2
+custom_footprints
 CPC1301GR
 CPC1301GR Optocoupler footprint
 
@@ -94745,12 +94752,103 @@ CPC1301GR Optocoupler footprint
 4
 4
 custom_footprints
+Crystal_SMD_HC49-US
+SMD Crystal HC-49-SD http://cdn-reichelt.de/documents/datenblatt/B400/xxx-HC49-SMD.pdf, 11.4x4.7mm^2 package
+SMD SMT crystal
+0
+2
+2
+custom_footprints
+DM3AT-SF-PEJM5
+
+
+0
+14
+10
+custom_footprints
 D_P22mm_D7.3mm_Horizontal
 D_L22mm_D7.3mm_Horizontal
 Diode Axial Horizontal
 0
 2
 2
+custom_footprints
+HTQFP-64-1EP_10x10mm_P0.5mm_EP8x8mm_Mask4.4x4.4mm_ThermalVias
+64-Lead Plastic Thin Quad Flatpack (PT) - 10x10x1 mm Body, 2.00 mm Footprint [HTQFP] thermal pad
+HTQFP-64 Pitch 0.5 
+0
+106
+65
+custom_footprints
+Layer_Indicator_2
+
+
+0
+0
+0
+custom_footprints
+Layer_Indicator_4
+
+
+0
+0
+0
+custom_footprints
+MicroSIP-11
+Ti MicroSIP module
+SIS, uSiP
+0
+11
+11
+custom_footprints
+Molex_743201007
+DVI Connector, PCB Receptacle , Through Hole, Right-Angle, 29 Circuits
+DVI Connector
+0
+32
+30
+custom_footprints
+Nexperia_PESD4USB3U-TTS
+ESD protection for high-speed interfaces, HDMI, LVDS, SerDes, GMSL, eSATA
+ESD, TVS, HDMI, LVDS
+0
+10
+10
+custom_footprints
+Nexperia_PESD4USB3U-TTS_MOD
+Removes NC pins 6, 7, 9, 10 for PESD4USB3U-TTS. ESD protection for high-speed interfaces, HDMI, LVDS, SerDes, GMSL, eSATA
+ESD, TVS, HDMI, LVDS
+0
+6
+6
+custom_footprints
+Pololu-38-Caster
+
+
+0
+0
+0
+custom_footprints
+Pololu-micro-gearmotor
+
+
+0
+6
+6
+custom_footprints
+Pololu_VL6180X_Carrier
+Through hole angled pin header, 1x07, 2.54mm pitch, 6mm pin length, single row
+Through hole angled pin header THT 1x07 2.54mm single row
+0
+7
+7
+custom_footprints
+RP2040-QFN-56
+QFN, 56 Pin (http://www.cypress.com/file/416486/download#page=40), generated with kicad-footprint-generator ipc_dfn_qfn_generator.py
+QFN DFN_QFN
+0
+70
+57
 custom_footprints
 SC-70-6_Handsoldering
 SC70-6, Handsoldering
